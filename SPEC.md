@@ -69,6 +69,8 @@ Only `"<question>"` is required. Everything else is optional, and the question i
 
 An `@open` passes the coverage check (§5) and is listed in every report until it is replaced by a `@source`.
 
+**Answer candidates.** When `in` names a single source, such as `in linear:ENG-142`, `sync` reads it, and `check` reports each passage there written by someone who satisfies the opening's authority (LC019), quoting it. Whether a passage answers the question is a judgment, so the checker never flips an `@open` itself: a person, or an agent following the skill, replaces it with a `@source` citing that passage.
+
 **Sticky arguments.** When `sticky` is `true` in the config (§5), the `@source` that replaces an `@open` must keep the opening's `by` and `in`, combined as `by <who> in <where>`. The `options` and `<id>` are dropped, because the question has been answered. Whoever answers the question, usually an agent following the skill, edits the comment. `check` compares against the base branch and reports an `@open` replaced by a `@source` that dropped its sticky arguments (LC015). When `sticky` is `false`, the replacing `@source` may carry any arguments or none.
 
 *Future:* distinguish a **parked** question (no one may choose yet) from a **permission** (the source explicitly allows either reading, so the implementer may choose).
@@ -156,7 +158,7 @@ A quote that spans text by several authors is attributed to all of them, and eac
 | `nango` | Nango proxy | Nango Cloud, or self-hosted (the free self-hosted option includes the Auth and Proxy features this needs) | Elastic License 2.0 (source-available, not open source) |
 | `composio` | Composio `proxyExecute`, using a connected account | Composio's hosted platform | Proprietary platform; MIT SDK |
 
-Each source chooses its transport in the config (§5), so a project can mix them. Projects should know that a hosted transport routes source text, including tickets and contracts, through a third party. Composio only lets a connected account call its own provider's API domain, which matches how Live Comments uses it.
+Each source chooses its transport in the config (§5), so a project can mix them. A source that names neither uses Composio through the logged-in `composio` CLI, which suits local use; CI should use the SDK with an API key, or Nango. Projects should know that a hosted transport routes source text, including tickets and contracts, through a third party. Composio only lets a connected account call its own provider's API domain, which matches how Live Comments uses it.
 
 *Later versions:* a `command` binding (an executable speaking the contract as JSON over stdin and stdout) and an `mcp` binding, for sources neither transport covers.
 
@@ -202,7 +204,7 @@ expr       := <account> | <place> | <name> | members(<place>)
 - **Places** are prefixes of a source's location: a system, a container (team, space, repository, folder), a document, or a thread. `linear:team/PRICING` contains `linear:ENG-142` when the resolver reports ENG-142's container as `team/PRICING`.
 - **A bare place is a place.** `members(<place>)` means the people who belong to it, resolved through the place's own tool at sync time. Membership changes appear in the lockfile diff.
 - **`a | b`** is satisfied by words from either.
-- **`a & b`** is satisfied only when the rule's sources together include words from both. Joint decisions cite at least two sources.
+- **`a & b`** is satisfied when the words a rule cites, across all of its `@source` tags with the same `by`, include words from someone in `a` and from someone in `b`. Joint decisions usually cite two sources; one person who belongs to both also satisfies it.
 - **`who in where`** is satisfied by words that someone in `who` wrote in `where`.
 - Inline, `by` and `in` accept the same expressions, so a one-off needs no new name: `by jdoe in linear:ENG-142`.
 
@@ -227,10 +229,11 @@ Live Comments does not record approval or sign-off. It checks who wrote the word
 
 ## 8. Lockfile
 
-`live-comments.lock.json` is committed. It holds one entry per distinct ref:
+`live-comments.lock.json` is committed. It holds one entry per distinct ref under `sources`, and the resolved accounts of every `members(…)` place under `memberships`:
 
 ```json
 {
+  "sources": {
   "linear:ENG-142": {
     "uri": "https://linear.app/acme/issue/ENG-142",
     "resolver": "nango:linear",
@@ -244,6 +247,10 @@ Live Comments does not record approval or sign-off. It checks who wrote the word
       { "start": 0,   "end": 412, "author": { "system": "linear", "account": "usr_8f2…" } },
       { "start": 413, "end": 590, "author": { "system": "linear", "account": "usr_31a…" } }
     ]
+  }
+  },
+  "memberships": {
+    "linear:team/LEGAL": { "retrieved_at": "2026-10-30T14:02:12Z", "accounts": ["linear:usr_31a…"] }
   }
 }
 ```
@@ -285,6 +292,7 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | LC015 | error | check | `@source` replaced an `@open` but dropped its sticky arguments |
 | LC016 | info | check | Authority changed relative to the base branch |
 | LC017 | error | check | Authority file defines a name twice or contains a cycle |
+| LC019 | info | check | Possible answer to an `@open`: a passage in its `in` source by someone who satisfies its authority |
 | LC018 | error | check | Ref uses a scheme with no configured resolver; run `connect` |
 | LC100 | info | check, report | Open question, with who should answer it |
 
