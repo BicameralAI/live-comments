@@ -206,6 +206,7 @@ Names are case-sensitive and must be defined once (LC017). Definitions may refer
 - **Agents never hold authority.** Accounts defined with `agent` never satisfy any expression, including through `members(…)` and place-only authorities. Words an agent wrote under a person's credentials are excluded whenever the provider can tell them apart.
 - **Unknown names and accounts.** A `by` that uses an undefined name is an error (LC011). Quoted words written by an account that no person definition includes satisfy no expression except a place-only one, and are reported (LC010).
 - **Matching is assisted, not automatic.** `live-comments authority suggest` proposes person definitions, for example from verified emails that several systems share. It writes proposals for review and never edits the file directly.
+- **Agents propose; people approve.** When a user says who should decide in plain words, an agent looks for a matching name with `who --search`. If none exists, it proposes a definition to the user and adds it only with the user's agreement. The change then goes through the file's normal review.
 - **Directories can supply people.** A project with an identity provider that supports SCIM can generate the person definitions from it.
 
 ### 7.4 Authority changes in review
@@ -253,6 +254,8 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | `live-comments mcp` | yes | Run an MCP server whose `read_source` tool does the same as `read`, so coding agents read sources through the checker's path. |
 | `live-comments context <file:line>` | none | Print, as JSON, everything an agent needs before annotating: whether the line is governed, nearby annotations, the authorities they use, and `sticky`. |
 | `live-comments who <expr>` | none | Expand an authority expression into the people and places that satisfy it. |
+| `live-comments who --search "<words>"` | none | List names whose definitions, members or places match the words, so a request like "leave this to the pricing team" can be matched to a name (§7.3). |
+| `live-comments connect <system>` | yes | Connect a tool through Nango, which asks the user to sign in, and add its resolver to the config. |
 | `live-comments fill <id or file:line> <ref> ["<quote>"]` | yes | Replace an `@open` with a `@source`, carrying sticky arguments (§4.2). |
 | `live-comments report` | none | List open questions with who should answer them, plus coverage per governed area. |
 | `live-comments authority suggest` | yes | Propose person definitions for review (§7.3). |
@@ -276,6 +279,7 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | LC015 | error | check | `@source` replaced an `@open` but dropped its sticky arguments |
 | LC016 | info | check | Authority changed relative to the base branch |
 | LC017 | error | check | Authority file defines a name twice or contains a cycle |
+| LC018 | error | check | Ref uses a scheme with no configured resolver; run `connect` |
 | LC100 | info | check, report | Open question, with who should answer it |
 
 ## 10. Agent skill and setup

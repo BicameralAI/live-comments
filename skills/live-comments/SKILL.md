@@ -47,12 +47,34 @@ Only the question is required. Make it answerable in one line:
 - List the options you considered when there are a few.
 - Add `by` and `in` the way nearby code does. If a ticket already discusses the question, point at it: `in linear:ENG-142`.
 
+## Connecting sources
+
+Sometimes a source lives in a tool the project can't read yet: `read` reports an unknown scheme or denied access, or the user says "the decision is in our Notion".
+
+- Ask the user to connect it with `npx live-comments connect <system>`. Connecting needs the user to sign in, so you can't do it for them. Tell them exactly which command to run and why.
+- Until it is connected, don't write a `@source` for something you couldn't read. Write an `@open` that points at where the answer lives, for example `in notion:space/Pricing`.
+
 ## Choosing `by`
 
-`by` names who should decide, using names from the `AUTHORITY` file.
+`by` names who should decide, using names from the `AUTHORITY` file. Check what a name covers with `npx live-comments who <name>`.
 
-- Reuse the authority that neighbouring code uses for the same kind of rule.
-- Use only names defined in `AUTHORITY`. Check what a name covers with `npx live-comments who <name>`. Never add or edit definitions in `AUTHORITY`. That file is for people to maintain.
+**When the user says who decides** ("leave this to the pricing team", "legal owns refund rules"), find the matching name:
+
+```
+npx live-comments who --search "pricing team"
+```
+
+It lists names whose definitions, members or places match the words.
+
+- **One clear match:** use it, and mention it in your summary.
+- **Several matches:** ask the user which one, showing what each covers.
+- **No match:** propose a definition, for example `pricing-team = members(linear:team/PRICING)`. Show it to the user and add it to `AUTHORITY` only if they agree. Tell them the change needs review from the owners of `AUTHORITY`.
+
+**When the user doesn't say,** reuse the authority that neighbouring code uses for the same kind of rule.
+
+Rules that always apply:
+
+- Never add or change a definition in `AUTHORITY` on your own initiative. Propose it and wait for the user.
 - Never change an existing `by` unless the user asked you to. Authority changes are flagged in review.
 - If you are unsure who decides, leave `by` off and say so in your summary.
 
