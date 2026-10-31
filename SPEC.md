@@ -1,7 +1,7 @@
 # Live Comments — draft specification
 
 **Status:** draft v0.1 · 2026-10-30 · BicameralAI
-**Scope of this draft:** TypeScript reference implementation. Sources of any kind plug in through a resolver contract (§6).
+**Scope of this draft:** TypeScript reference implementation, built on Effect. Sources plug in through a resolver contract (§6); external tools are reached through Nango by default.
 
 ---
 
@@ -32,6 +32,7 @@ The checker verifies that each quote still appears in its source, that the sourc
 3. **Deterministic first.** Every v0 check is deterministic and reproducible. Whether a quote *supports* the code is a semantic judgment; when added, it is advisory and never turns a check green.
 4. **Uncited is open, not illegal.** Missing support is surfaced as a question with an owner, not suppressed and not guessed.
 5. **Offline check, online sync.** Compiling never touches the network. External sources are snapshotted into a committed lockfile, and refreshing that lockfile is a separate, explicit step.
+6. **One read path.** Whoever writes a citation, person or agent, reads the source through the same resolver and normalization the checker uses (§6.2). A quote is therefore always checked against exactly the text its author saw.
 
 ## 4. Annotations
 
@@ -44,7 +45,7 @@ Annotations are JSDoc tags. They attach to the declaration that immediately foll
 ```
 
 - `<ref>` identifies a source (§6). A declaration may carry several `@source` tags.
-- `<quote>` must occur verbatim in the source after normalization: Unicode NFC, runs of whitespace collapsed to one space, leading and trailing whitespace trimmed. Matching is case-sensitive. Ellipses and paraphrase are not supported in v0.
+- `<quote>` must occur verbatim in the source's normalized text (§6.2). The same normalization is applied to the quote. Matching is case-sensitive. Ellipses and paraphrase are not supported in v0.
 - A quote corresponds to the `exact` field of a W3C Web Annotation `TextQuoteSelector`. When a quote occurs more than once in a source, a later version may accept `prefix` and `suffix` to tell the occurrences apart, as that selector does.
 
 ### 4.2 `@open`
@@ -84,8 +85,8 @@ A ref is a URI. Its scheme selects a resolver configured in `live-comments.confi
 {
   "resolvers": {
     "file":   { "builtin": "file", "root": "." },
-    "linear": { "mcp": "linear", "template": "linear://issue/{id}" },
-    "acme":   { "command": ["acme-resolver"] }
+    "linear": { "nango": { "integration": "linear", "connection": "acme-prod" } },
+    "notion": { "nango": { "integration": "notion", "connection": "acme-prod" } }
   },
   "status": {
     "file":   { "builtin": "git-approval", "path": "decisions/" },
@@ -103,10 +104,18 @@ resolve(ref) → { uri, text, version, retrieved_at }
              | { error: "not_found" | "denied" | "unreachable" }
 ```
 
-- `text` is the source's full current text, flattened to plain text. A resolver must not summarize or excerpt it.
-- `version` must change whenever `text` changes. A provider's etag, an `updated_at` timestamp or a commit hash all qualify.
+- `text` is the source's full current text, normalized as below. A resolver must not summarize or excerpt it.
+- `version` must change whenever `text` changes. A provider's etag, an `updated_at` timestamp or a commit hash all qualify. If the provider offers none, `version` is the SHA-256 of `text`.
 - A resolver that must redact content (for example, to strip personal data) reports `redacted: true`. A quote that falls inside redacted text cannot be verified and is reported as LC008.
 - Resolution must be read-only. A resolver never writes to its source.
+
+**Normalization.** Every resolver produces plain text the same way, and the same steps are applied to every quote:
+
+1. Convert the provider's rich format to plain text: Markdown, Atlassian Document Format and Notion blocks lose their markup and keep their words. Link text is kept and link targets are dropped.
+2. Apply Unicode NFC, and replace curly quotes and apostrophes with straight ones.
+3. Collapse runs of whitespace to one space and trim the ends.
+
+**Agents use the same path.** Principle 6 is enforced by giving authors no reason to read a source any other way. `live-comments read <ref>` and the `read_source` tool of `live-comments mcp` (§8) resolve a source, normalize it, record the snapshot in the lockfile, and return the normalized text. An agent configured with that tool quotes from the text the checker will verify. A quote copied from a different rendering, such as a web page or another MCP server, may not match and is reported as LC002.
 
 A **status provider** answers a separate question: has this ref been ratified, and by whom?
 
@@ -129,13 +138,16 @@ Any resolver can supply text. Only a status provider configured for that scheme 
 |---|---|---|
 | `builtin: file` | text | Reads files in the repository at the current commit. |
 | `builtin: git-approval` | status | Reads frontmatter status and checks pull-request approval (§6.5). |
-| `mcp` | text | Calls `resources/read` on a configured Model Context Protocol server, filling the URI template from the ref. Any MCP server that exposes its documents as resources becomes a source without new code. |
-| `command` | text, status | Runs an executable that speaks the contract as JSON over stdin and stdout, for sources that have no MCP server. |
+| `nango` | text | The default for external tools. Fetches the provider's API through a Nango proxy, which handles OAuth, token refresh and rate limits, then converts the response to text with a per-provider extractor. |
 | `ledger` | text, status | Delegates to a governance ledger that records sign-offs, such as Bicameral. This is the binding that can return `ratified` for sources outside Git, such as tickets, documents and meeting notes. |
 
-**Authentication.** Most of the work in an integration is authentication: OAuth flows, token refresh and per-provider quirks. The core does not handle it. A resolver may use an auth broker such as Nango, whose proxy returns raw provider API responses with managed credentials, or Composio, which exposes provider actions as agent tools and MCP servers. Either fits behind the `command` binding. A broker never supplies status, because it serves documents and does not record who ratified them (§6.3).
+**Why Nango.** Most of the work in an integration is authentication: OAuth flows, token refresh and per-provider quirks. Nango's proxy covers that for several hundred APIs and returns the provider's raw responses, so Live Comments controls exactly how text is extracted. The extractors are small, pure functions from an API response to plain text, one per provider. v0 ships extractors for GitHub, Linear, Notion, Jira and Google Docs.
 
-Before relying on a broker, a project should check two things. Hosted brokers route source text, including tickets and contracts, through a third party. Self-hosted options and their licenses differ by vendor and plan.
+Live Comments needs only Nango's Auth and Proxy features, which are exactly what Nango's free self-hosted option includes. Projects should know two things before choosing a deployment. Nango Cloud routes source text, including tickets and contracts, through a third party. Nango is licensed under the Elastic License 2.0, which permits self-hosting for internal use but is not an open-source license.
+
+Nango supplies text only. It serves documents and does not record who ratified them, so a `nango` source is `proposed` unless a status provider says otherwise (§6.3).
+
+*Later versions:* a `command` binding (an executable speaking the contract as JSON over stdin and stdout) and an `mcp` binding, for sources Nango does not cover.
 
 ### 6.5 Ratified decision files
 
@@ -214,8 +226,8 @@ The same person appears as different accounts in different systems: a GitHub log
 ```json
 {
   "linear:ENG-142": {
-    "uri": "linear://issue/ENG-142",
-    "resolver": "mcp:linear",
+    "uri": "https://linear.app/acme/issue/ENG-142",
+    "resolver": "nango:linear",
     "retrieved_at": "2026-10-30T14:02:11Z",
     "version": "updated_at=2026-10-03T09:12:40Z",
     "text_sha256": "…",
@@ -241,6 +253,8 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 |---|---|---|
 | `live-comments check` | none | Parse annotations and verify them against the lockfile. Deterministic; intended for every save and for CI. |
 | `live-comments sync` | yes | Re-fetch every referenced source, update the lockfile, and report what changed. Run on demand, nightly, or on PRs. |
+| `live-comments read <ref>` | yes | Resolve and normalize one source, record it in the lockfile, and print the text to quote from (§6.2). |
+| `live-comments mcp` | yes | Run an MCP server whose `read_source` tool does the same as `read`, so coding agents read sources through the checker's path. |
 | `live-comments report` | none | List open questions and their owners, plus coverage per governed area. |
 | `live-comments rename` | none | Rename an opening id in the code and the owners file together (§6.9). |
 | `live-comments identities suggest` | yes | Propose account-to-principal mappings for review (§6.8). |
@@ -270,13 +284,14 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 - **CLI** built on the TypeScript compiler API. This is the authoritative checker.
 - **ESLint rule** wrapping `check`, for existing CI pipelines.
 - **Editor plugin** (later): hovers that show each quote and its status, and a "cite from linked issue" quick fix. TypeScript language-service plugins affect only the editor and cannot fail `tsc`, so enforcement belongs in the CLI or lint, not in a compiler plugin.
-- The annotation grammar (§4), resolver contract (§6) and lockfile format (§7) are meant to be language-neutral. TypeScript is the reference implementation.
-- The first release ships the `file`, `git-approval`, `mcp` and `command` bindings. Provider-specific resolvers live outside the core package.
+- The annotation grammar (§4), resolver contract and normalization (§6) and lockfile format (§7) are meant to be language-neutral. TypeScript is the reference implementation.
+- The reference implementation is built on Effect. The resolver contract is an Effect service, and each binding is a Layer: `file`, `nango` and `ledger` in production, fixtures in tests. Effect handles retries with backoff, timeouts, limits on concurrent requests and partial failure during `sync`, and its typed errors map onto LC007. Users of the CLI never see Effect.
+- The first release ships the `file`, `git-approval`, `nango` and `ledger` bindings, with extractors for GitHub, Linear, Notion, Jira and Google Docs.
 
 ## 10. Non-goals for v0
 
 - Checking whether a quote semantically supports the code
-- First-party resolvers for individual providers; sources arrive through MCP, commands or a ledger
+- Sources that Nango or the ledger cannot reach
 - Languages other than TypeScript
 - Detecting uncited logic beyond the governed-export rule
 - Runtime behavior for open questions
@@ -287,14 +302,15 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 2. **Citation laundering.** An agent pressured to satisfy LC004 can cite a nearby but irrelevant quote. Deterministic checks catch missing and misquoted citations, not irrelevant ones. What advisory signal is cheap enough to run on every PR?
 3. **Runtime semantics of open questions.** When an `@open` rule must run, should it fail closed, run a default explicitly marked provisional, or run every reading and log where they disagree?
 4. **Ratification outside Git.** How do contracts, tickets and meeting decisions get an unforgeable ratifying act without moving everything into pull requests?
-5. **Quote normalization.** Markdown rendering, smart quotes, and text that spans an edit boundary.
+5. **Normalization edge cases.** Tables, code blocks, and quotes that span two comments in a thread or two blocks in a document.
+6. **Agents that bypass the read path.** An agent can still read a ticket through another tool and paraphrase it. LC002 catches the mismatch but not the reason. Should `read` record which session read which source, so a report can show quotes that were never read through it?
 
 ## 12. Related work
 
 - **Requirements tracing tools** such as StrictDoc (`@relation` markers in source) and OpenFastTrace link code to requirements kept in a controlled document. They assume the requirements are already approved, and they do not verify quotes.
 - **Spec-driven AI development** (Kiro, Spec Kit, Tessl) keeps specs next to code as the agent's input. The Spec Growth Engine (Grabowski, arXiv:2606.27045) adds a blocking merge gate on spec–code drift and treats code with no owning spec as an error. Specs there live in the repository and can be written in the same commit as the code they justify.
 - **AsDecided** proposes that agents cite architectural decisions by id, revision and status in plans and pull requests, with a checker confirming each record exists and applies.
-- **Standards.** OSLC (OASIS) defines linked-data integration between lifecycle tools and is used mainly by enterprise requirements-management tools. ReqIF exchanges requirements documents between tools as files. The Model Context Protocol gives tools a common way to expose documents by URI, which Live Comments uses as a transport (§6.4). The W3C Web Annotation Data Model gives quote selectors and time states a standard shape, which Live Comments follows (§4.1, §7).
+- **Standards.** OSLC (OASIS) defines linked-data integration between lifecycle tools and is used mainly by enterprise requirements-management tools. ReqIF exchanges requirements documents between tools as files. The Model Context Protocol is how Live Comments offers its read path to coding agents (§8). The W3C Web Annotation Data Model gives quote selectors and time states a standard shape, which Live Comments follows (§4.1, §7).
 
 Live Comments differs in four places: citations are verbatim quotes checked against external sources; the cited source's ratification status is part of the check; ratification is an act the code author cannot perform; and uncited logic is reported as an open question with an owner.
 
