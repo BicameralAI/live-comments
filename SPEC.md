@@ -1,7 +1,7 @@
 # Live Comments — draft specification
 
 **Status:** draft v0.1 · 2026-10-30 · BicameralAI
-**Scope of this draft:** TypeScript reference implementation, built on Effect. Sources plug in through a resolver contract (§6); external tools are reached through Nango by default.
+**Scope of this draft:** TypeScript reference implementation, built on Effect. Sources plug in through a resolver contract (§6); external tools are reached through Nango or Composio.
 
 ---
 
@@ -84,8 +84,8 @@ An `@open` passes the coverage check (§5) and is listed in every report until i
   "authority": "AUTHORITY",
   "resolvers": {
     "file":   { "builtin": "file", "root": "." },
-    "linear": { "nango": { "integration": "linear", "connection": "acme-prod" } },
-    "notion": { "nango": { "integration": "notion", "connection": "acme-prod" } }
+    "linear": { "provider": "linear", "nango":    { "integration": "linear", "connection": "acme-prod" } },
+    "notion": { "provider": "notion", "composio": { "connectedAccount": "ca_7Hq…" } }
   }
 }
 ```
@@ -145,13 +145,20 @@ A quote that spans text by several authors is attributed to all of them, and eac
 | Binding | How |
 |---|---|
 | `builtin: file` | Reads files in the repository at the current commit, attributed line by line with `git blame`. |
-| `nango` | The default for external tools. Fetches the provider's API through a Nango proxy, which handles OAuth, token refresh and rate limits, then converts the response to normalized text and attribution with a per-provider extractor. |
+| `provider` | Reads an external tool in two steps: a **transport** makes authenticated requests to the tool's own API, and an **extractor** turns the raw responses into normalized text and attribution. |
 
-**Why Nango.** Most of the work in an integration is authentication: OAuth flows, token refresh and per-provider quirks. Nango's proxy covers that for several hundred APIs and returns the provider's raw responses, so Live Comments controls exactly how text is extracted. The extractors are small, pure functions from an API response to normalized text and attribution, one per provider. v0 ships extractors for GitHub, Linear, Notion, Jira and Google Docs.
+**Extractors** are small, pure functions from a provider's raw API responses to segments of text with their authors, one per provider. Because they read the provider's own API format, they do not depend on the transport. v0 ships extractors for GitHub, Linear, Notion, Jira and Google Docs. `directory` (§9) uses the same transports to list a provider's accounts and places.
 
-Live Comments needs only Nango's Auth and Proxy features, which are exactly what Nango's free self-hosted option includes. Projects should know two things before choosing a deployment. Nango Cloud routes source text, including tickets and contracts, through a third party. Nango is licensed under the Elastic License 2.0, which permits self-hosting for internal use but is not an open-source license.
+**Transports** handle what makes integrations expensive to build: OAuth flows, token refresh and per-provider authentication. A transport only has to send an authenticated HTTP request to the provider's API and return the raw response. v0 ships two:
 
-*Later versions:* a `command` binding (an executable speaking the contract as JSON over stdin and stdout) and an `mcp` binding, for sources Nango does not cover.
+| Transport | Mechanism | Deployment | License |
+|---|---|---|---|
+| `nango` | Nango proxy | Nango Cloud, or self-hosted (the free self-hosted option includes the Auth and Proxy features this needs) | Elastic License 2.0 (source-available, not open source) |
+| `composio` | Composio `proxyExecute`, using a connected account | Composio's hosted platform | Proprietary platform; MIT SDK |
+
+Each source chooses its transport in the config (§5), so a project can mix them. Projects should know that a hosted transport routes source text, including tickets and contracts, through a third party. Composio only lets a connected account call its own provider's API domain, which matches how Live Comments uses it.
+
+*Later versions:* a `command` binding (an executable speaking the contract as JSON over stdin and stdout) and an `mcp` binding, for sources neither transport covers.
 
 ## 7. Authority
 
@@ -256,7 +263,7 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | `live-comments who <expr>` | none | Expand an authority expression into the people and places that satisfy it. |
 | `live-comments authority` | none | Print every name in the authority file, fully expanded, as JSON. |
 | `live-comments directory <system>` | yes | List a connected system's accounts (id, display name, email) and places (id, name) as JSON, so person and place definitions can be written with exact ids. |
-| `live-comments connect <system>` | yes | Connect a tool through Nango, which asks the user to sign in, and add its resolver to the config. |
+| `live-comments connect <system> [--via nango\|composio]` | yes | Connect a tool through a transport, which asks the user to sign in, and add its resolver to the config. |
 | `live-comments report` | none | List open questions with who should answer them, plus coverage per governed area. |
 
 ### 9.1 Diagnostics
@@ -302,15 +309,15 @@ Live Comments ships an agent skill that tells coding agents when to annotate, ho
 - **ESLint rule** wrapping `check`, for existing CI pipelines.
 - **Editor plugin** (later): hovers that show each quote, who wrote it and what `by` expands to, and a quick fix that fills an `@open` from a linked source. TypeScript language-service plugins affect only the editor and cannot fail `tsc`, so enforcement belongs in the CLI or lint, not in a compiler plugin.
 - The annotation grammar (§4), resolver contract and normalization (§6), authority expressions (§7) and lockfile format (§8) are meant to be language-neutral. TypeScript is the reference implementation.
-- The reference implementation is built on Effect. The resolver contract is an Effect service, and each binding is a Layer: `file` and `nango` in production, fixtures in tests. Effect handles retries with backoff, timeouts, limits on concurrent requests and partial failure during `sync`, and its typed errors map onto LC007. Users of the CLI never see Effect.
-- The first release ships the `file` and `nango` bindings, with extractors for GitHub, Linear, Notion, Jira and Google Docs, and the skill.
+- The reference implementation is built on Effect. The resolver contract is an Effect service, and each binding is a Layer. Transports are a separate service with `nango` and `composio` Layers, so every extractor runs unchanged over either; tests provide recorded responses through a fixture transport. Effect handles retries with backoff, timeouts, limits on concurrent requests and partial failure during `sync`, and its typed errors map onto LC007. Users of the CLI never see Effect.
+- The first release ships the `file` and `provider` bindings, the `nango` and `composio` transports, extractors for GitHub, Linear, Notion, Jira and Google Docs, and the skill.
 
 ## 12. Non-goals for v0
 
 - Checking whether a quote semantically supports the code
 - Recording approval or sign-off of decisions. Live Comments checks who wrote the words a rule rests on; endorsement belongs to governance tools such as Bicameral
 - Mapping paths to owners. Authority is named on each rule (§7)
-- Sources that Nango cannot reach
+- Sources that neither Nango nor Composio can reach
 - Languages other than TypeScript
 - Detecting uncited logic beyond the governed-export rule
 - Runtime behavior for open questions

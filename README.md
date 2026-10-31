@@ -14,7 +14,7 @@ export function applyGiftCard(card: GiftCard, total: Price): Price { … }
 
 A `@source` needs only a ref. Add a verbatim quote and the checker confirms the words are still there. Add `by` and it confirms they were written by someone your team named for that kind of decision. A rule nobody has decided is marked `@open`, a question addressed to the people who can answer it.
 
-Who counts as `pricing-call` is defined once, in a governed `AUTHORITY` file of names for people, places and authorities. Sources are reached through a small resolver contract, with GitHub, Linear, Notion, Jira and Google Docs available through Nango. Coding agents read sources through the same path the checker uses, and a shipped agent skill teaches them when and how to annotate.
+Who counts as `pricing-call` is defined once, in a governed `AUTHORITY` file of names for people, places and authorities. Sources are reached through a small resolver contract, with GitHub, Linear, Notion, Jira and Google Docs available through Nango or Composio. Coding agents read sources through the same path the checker uses, and a shipped agent skill teaches them when and how to annotate.
 
 **Status:** draft specification, no implementation yet. Read [SPEC.md](SPEC.md).
 
