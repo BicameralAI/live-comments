@@ -64,20 +64,11 @@ Most tools can only describe decisions that were made. `@open` describes one tha
 /** @open checkout.gift-cards "Do gift cards stack with discounts?" by pricing in linear:ENG-188 options "yes" | "no, applied after" */
 ```
 
-It is a typed hole for a product decision: it records that the rule is undecided, who may decide it, and where the answer should be written. It can only be filled one way, and every other path is caught:
+It is a typed hole for a product decision: it records that the rule is undecided, who may decide it, and where the answer should be written. The common cases:
 
-| What happens | Result |
-|---|---|
-| The question is written | Listed in every `check` and `report` with who should answer it (LC100). A governed export can't drop it silently. |
-| Someone without authority replies in ENG-188 | Nothing. Their words are not an answer. |
-| A bot or coding agent replies, even under a person's account the tool can tell apart | Nothing. Agents never hold authority. |
-| Someone on the pricing team replies | `sync` reports their words as a possible answer, quoted (LC019). A person or agent decides whether it answers the question. |
-| It is flipped to a `@source` quoting that reply | Passes: the quote is in ENG-188, its author is on the pricing team, and the `by` and `in` carried over. |
-| It is flipped with a quote from someone else, or a paraphrase | Rejected (LC009, LC002). |
-| It is flipped and the `by` or `in` is dropped | Rejected in review (LC015), so an answer can't quietly lower the bar. |
-| It is deleted, or its `by` is changed, in a pull request | Shown in review against the base branch (LC016). |
-| The answer is later edited out of ENG-188 | The `@source` goes stale on the next `sync` (LC006). |
-| The person who answered later leaves the pricing team | The rule loses its authority on the next `sync` (LC009), and the lockfile diff shows who left. |
+- **Someone on the pricing team answers in ENG-188.** `sync` quotes their reply as a possible answer, and you (or your agent) flip the `@open` to a `@source` citing it.
+- **Anyone else answers, including a coding agent.** It isn't treated as an answer, and a `@source` quoting it is rejected.
+- **The answer is later edited, or its author leaves the team.** The next `sync` flags the rule as stale or no longer authorized.
 
 ## Before you start
 
