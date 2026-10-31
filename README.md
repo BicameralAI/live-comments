@@ -26,7 +26,7 @@
 
 <p align="center">
   <a href="#quick-start"><b>Quick start</b></a> ·
-  <a href="#how-it-works"><b>How it works</b></a> ·
+  <a href="#what-it-keeps-in-sync"><b>What it keeps in sync</b></a> ·
   <a href="SPEC.md"><b>Spec</b></a> ·
   <a href="skills/live-comments/SKILL.md"><b>Agent skill</b></a> ·
   <a href="#contributing"><b>Contributing</b></a>
@@ -70,6 +70,20 @@ It is a typed hole for a product decision: it records that the rule is undecided
 - **Anyone else answers, including a coding agent.** It isn't treated as an answer, and a `@source` quoting it is rejected.
 - **The answer is later edited, or its author leaves the team.** The next `sync` flags the rule as stale or no longer authorized.
 
+## What it keeps in sync
+
+A comment's status is never stored. It is recomputed from the code, the lockfile, `AUTHORITY` and the config, so when any of them changes, `sync` and `check --base` report exactly which rules moved:
+
+| What changed | What live-comments does |
+|---|---|
+| A cited ticket or doc is edited | Re-checks every quote from it. A removed quote goes stale (LC006); a citation without a quote reports that its source changed (LC014). |
+| The same words now come from someone else | Re-checks authority against the new author, not just the text (LC009). |
+| Someone joins or leaves a group used with `members(…)` | Re-evaluates every rule that names the group, and records the change in the lockfile so it is reviewable. |
+| `AUTHORITY` is edited | Re-evaluates every rule that uses a changed name, so a PR to `AUTHORITY` shows which rules gain or lose authority. |
+| A pull request changes annotations | Lists every authority change (LC016) and rejects answers that drop sticky arguments (LC015). |
+| An area becomes governed | Surfaces every export there with no annotation (LC004). |
+| A source can't be reached | Keeps the last good snapshot so `check` still runs offline, and reports the failure (LC007). |
+
 ## Before you start
 
 Live comments read your tickets and docs through an integration platform, so **you need an account on [Composio](https://composio.dev) or [Nango](https://nango.dev)** to cite anything outside the repository. Live Comments never stores your tool credentials; the platform handles sign-in and token refresh, and Live Comments only asks it for the documents you cite.
@@ -111,38 +125,6 @@ In CI:
 ```
 
 With `--base`, the check also reports every authority change in the pull request, such as `by pricing → by eng`, so reviewers see who is deciding what even in a large diff.
-
-## How it works
-
-```mermaid
-flowchart LR
-    T["Ticket, doc or file"] -->|"read: one path for agents and checker"| L[("Lockfile<br/>snapshots, authors, memberships")]
-    A["AUTHORITY<br/>people, places, names"] --> C
-    L --> C{"check"}
-    S["@source ref, quote, by"] --> C
-    O["@open question, by, in"] --> C
-    C -->|"quote gone"| E1["LC002 / LC006 stale"]
-    C -->|"wrong author"| E2["LC009 unauthorized"]
-    C -->|"authorized words in the thread"| E3["LC019 possible answer"]
-    E3 -->|"a person or agent flips it"| S
-```
-
-A comment's status is never stored. It is recomputed from four inputs: the code, the lockfile, `AUTHORITY` and the config. When any of them changes, `sync` and `check --base` compare the before and after states and report exactly which rules moved:
-
-| What changed | What live-comments does |
-|---|---|
-| A cited ticket or doc is edited | Re-checks every quote from it. A removed quote goes stale (LC006); a citation without a quote reports that its source changed (LC014). |
-| The same words now come from someone else | Re-checks authority against the new author, not just the text (LC009). |
-| Someone joins or leaves a group used with `members(…)` | Re-evaluates every rule that names the group, and records the change in the lockfile so it is reviewable. |
-| `AUTHORITY` is edited | Re-evaluates every rule that uses a changed name, so a PR to `AUTHORITY` shows which rules gain or lose authority. |
-| A pull request changes annotations | Lists every authority change (LC016) and rejects answers that drop sticky arguments (LC015). |
-| An area becomes governed | Surfaces every export there with no annotation (LC004). |
-| A source can't be reached | Keeps the last good snapshot so `check` still runs offline, and reports the failure (LC007). |
-
-- **Sources** are read through a resolver per tool. External tools go through [Composio](https://composio.dev) or [Nango](https://nango.dev), which handle authentication, and an extractor that turns the tool's raw API response into text with authors. Extractors read each tool's own API format, so every extractor works over either platform. GitHub and Linear extractors ship today; repository files are attributed with `git blame`.
-- **Normalization** strips formatting the same way for sources and quotes, so a quote copied from `read` output always matches.
-- **The lockfile** snapshots every source and group membership, so `check` runs offline and upstream changes show up as reviewable diffs.
-- **Tested as a state machine.** Alongside unit and property tests, a model-based test drives random sequences of source edits, membership changes, quote changes and syncs, and checks every intermediate state against an independent reference model.
 
 ## `AUTHORITY`
 
@@ -196,13 +178,7 @@ Not done yet: Notion, Jira and Google Docs extractors; live tests of the Nango t
 
 ## Contributing
 
-Everyone is welcome. Open an issue with a use case, a missing extractor or a disagreement with the spec.
-
-```sh
-pnpm install
-pnpm build
-pnpm test
-```
+Everyone is welcome. Open an issue with a use case, a missing extractor or a disagreement with the spec. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, how the pieces fit, and the test suite.
 
 ## License
 
