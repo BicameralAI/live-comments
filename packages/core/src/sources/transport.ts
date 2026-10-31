@@ -77,23 +77,24 @@ export const nangoTransport = (c: Extract<TransportConfig, { kind: "nango" }>): 
 // ---------------------------------------------------------------------------
 // Composio: proxyExecute through the SDK, or `composio proxy` through the CLI
 
-const run = (cmd: string, args: ReadonlyArray<string>, input?: string) =>
+/** Run a command with stdin closed; the child is killed on timeout or interruption. */
+const run = (cmd: string, args: ReadonlyArray<string>, signal: AbortSignal) =>
   new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
-    const child = execFile(cmd, args as Array<string>, { maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const child = execFile(cmd, args as Array<string>, { maxBuffer: 64 * 1024 * 1024, timeout: 60_000, signal }, (err, stdout, stderr) => {
       const code = err && typeof (err as NodeJS.ErrnoException).code === "number" ? Number((err as NodeJS.ErrnoException).code) : err ? 1 : 0
-      resolve({ stdout, stderr, code })
+      resolve({ stdout, stderr: err && !stderr ? String(err.message) : stderr, code })
     })
-    if (input !== undefined) child.stdin?.end(input)
+    child.stdin?.end()
   })
 
 export const composioCliTransport = (c: Extract<TransportConfig, { kind: "composio" }>): Transport => ({
   name: "composio",
   request: (req) =>
     Effect.tryPromise({
-      try: async () => {
+      try: async (signal) => {
         const args = ["proxy", url(req), "--toolkit", c.toolkit, "-X", req.method]
         if (req.body !== undefined) args.push("-H", "content-type: application/json", "-d", JSON.stringify(req.body))
-        const { stdout, stderr, code } = await run(process.env.COMPOSIO_CLI ?? "composio", args)
+        const { stdout, stderr, code } = await run(process.env.COMPOSIO_CLI ?? "composio", args, signal)
         const starts = [stdout.indexOf("{"), stdout.indexOf("[")].filter((i) => i >= 0)
         const jsonStart = starts.length > 0 ? Math.min(...starts) : 0
         let body: unknown

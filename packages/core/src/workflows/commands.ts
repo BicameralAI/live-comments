@@ -87,7 +87,7 @@ export const planSync = (ws: Workspace): Effect.Effect<SyncResult, never, Source
         continue
       }
       const e: ResolveError = r.left
-      if (openPlaces.includes(ref)) continue // an `in` place that is not a single document
+      if (openPlaces.includes(ref) && e._tag === "NotADocument") continue // an `in` place such as a team, not a single document
       const old = ws.lock.sources[ref]
       if (old) newSources[ref] = old // keep the last good snapshot so check still works offline
       failures.push(diagnostic(e._tag === "UnknownScheme" ? "LC018" : "LC007", LOCK_FILE, 0, `${ref}: ${describe(e)}`))
