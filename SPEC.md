@@ -18,16 +18,16 @@ A **live comment** is a code comment that cites its source with a verbatim quote
 ```ts
 /**
  * @source linear:ENG-142 "Only the best single discount applies per order"
- * @source file:decisions/0007-discounts.md "Discounts are not cumulative"
+ * @source file:docs/pricing-policy.md "Discounts are not cumulative"
  */
 export function applyDiscounts(codes: Code[]): Price { … }
 ```
 
-The checker verifies that each quote still appears in its source, that the source has been ratified rather than merely proposed, and that business logic in governed areas cites something. Code that cites nothing is not treated as wrong. It is reported as an **open question** with an owner, until a person with standing closes it.
+The checker verifies that each quote still appears in its source, that the quoted words were written by someone authorized to decide that code, and that business logic in governed areas cites something. Code that cites nothing is not treated as wrong. It is reported as an **open question**, with the people who can close it.
 
 ## 3. Principles
 
-1. **Track authority; never grant it.** The annotations record that a rule needs a source and whether one exists. Nothing in the code can ratify a source. Ratification is an act that happens outside the program, in the system where the source lives. Standing to ratify belongs to the source's owner in that system (§6.7).
+1. **Track authority; never grant it.** The annotations record which words a rule rests on. Who may decide each area of code is declared outside the code, in a governed authority file, and checked against who actually wrote the quoted words (§6.5). Nothing in the code can grant authority.
 2. **Quotes, not links.** A link only proves that a page exists. A verbatim quote lets the checker confirm, without a model, that the cited text is actually there.
 3. **Deterministic first.** Every v0 check is deterministic and reproducible. Whether a quote *supports* the code is a semantic judgment; when added, it is advisory and never turns a check green.
 4. **Uncited is open, not illegal.** Missing support is surfaced as a question with an owner, not suppressed and not guessed.
@@ -54,9 +54,9 @@ Annotations are JSDoc tags. They attach to the declaration that immediately foll
 @open [<id>] "<question>"
 ```
 
-Declares, deliberately, that a rule is not yet decided. An `@open` declaration passes the coverage check (§5) and is listed in every report until it is replaced by a `@source` that points at ratified material.
+Declares, deliberately, that a rule is not yet decided. An `@open` declaration passes the coverage check (§5) and is listed in every report until it is replaced by a `@source` whose quoted words come from someone authorized to decide it.
 
-Code never names who may fill an opening. That is set in the governed owners file (§6.9), by path or by `<id>`. The optional `<id>` (for example `checkout.discount-stacking`) is needed only when one opening must have different owners from the rest of its path. The id is the only link between the comment and its owners entry. Tooling resolves the id to that entry's current line, so the link survives edits to either file.
+Code never names who may fill an opening. That is set in the governed owners file (§6.7), by path or by `<id>`. The optional `<id>` (for example `checkout.discount-stacking`) is needed only when one opening must have different owners from the rest of its path. The id is the only link between the comment and its owners entry. Tooling resolves the id to that entry's current line, so the link survives edits to either file.
 
 *Future:* distinguish a **parked** question (no one may choose yet) from a **permission** (the source explicitly allows either reading, so the implementer may choose). v0 has only `@open`.
 
@@ -66,14 +66,13 @@ Not all code needs citations. Requiring them everywhere produces junk citations 
 
 ```json
 {
-  "governed": ["src/checkout/**", "src/billing/**"],
-  "unratified": "warn"
+  "governed": ["src/checkout/**", "src/billing/**"]
 }
 ```
 
 Sources are configured separately (§6.1). In a governed area, every exported function, class and top-level constant must carry at least one `@source` or `@open`.
 
-## 6. Sources and ratification
+## 6. Sources and authority
 
 Live Comments does not ship a fixed list of integrations. Any system can be a source if it implements the resolver contract below. The checker knows only the contract.
 
@@ -87,10 +86,6 @@ A ref is a URI. Its scheme selects a resolver configured in `live-comments.confi
     "file":   { "builtin": "file", "root": "." },
     "linear": { "nango": { "integration": "linear", "connection": "acme-prod" } },
     "notion": { "nango": { "integration": "notion", "connection": "acme-prod" } }
-  },
-  "status": {
-    "file":   { "builtin": "git-approval", "path": "decisions/" },
-    "linear": { "ledger": "https://ledger.example.com" }
   }
 }
 ```
@@ -100,7 +95,7 @@ A ref is a URI. Its scheme selects a resolver configured in `live-comments.confi
 A **text resolver** answers one question: what does this ref say now?
 
 ```
-resolve(ref) → { uri, text, version, retrieved_at }
+resolve(ref) → { uri, text, version, retrieved_at, container, attribution }
              | { error: "not_found" | "denied" | "unreachable" }
 ```
 
@@ -108,6 +103,8 @@ resolve(ref) → { uri, text, version, retrieved_at }
 - `version` must change whenever `text` changes. A provider's etag, an `updated_at` timestamp or a commit hash all qualify. If the provider offers none, `version` is the SHA-256 of `text`.
 - A resolver that must redact content (for example, to strip personal data) reports `redacted: true`. A quote that falls inside redacted text cannot be verified and is reported as LC008.
 - Resolution must be read-only. A resolver never writes to its source.
+- `container` names where the source lives in its own system: a Linear team, a Notion space, a GitHub repository, a Drive folder. Authority rules can restrict which containers count (§6.5).
+- `attribution` maps spans of the normalized `text` to the accounts that wrote them: `[{ start, end, author: { system, account } }]` (§6.3).
 
 **Normalization.** Every resolver produces plain text the same way, and the same steps are applied to every quote:
 
@@ -117,66 +114,42 @@ resolve(ref) → { uri, text, version, retrieved_at }
 
 **Agents use the same path.** Principle 6 is enforced by giving authors no reason to read a source any other way. `live-comments read <ref>` and the `read_source` tool of `live-comments mcp` (§8) resolve a source, normalize it, record the snapshot in the lockfile, and return the normalized text. An agent configured with that tool quotes from the text the checker will verify. A quote copied from a different rendering, such as a web page or another MCP server, may not match and is reported as LC002.
 
-A **status provider** answers a separate question: has this ref been ratified, and by whom?
+### 6.3 Attribution
 
-```
-status(ref) → { status: "proposed" | "ratified" | "superseded",
-                owners: [ { system, account } ],
-                ratified_by?: { system, account, at },
-                superseded_by? }
-```
+Authority attaches to the person whose words are quoted, not to whoever owns the ticket or document as a whole. A ticket's description may be the product manager's while a comment under it is an engineer's guess, and quoting each carries different weight.
 
-`owners` lists the accounts that own the source in its own system. Each status provider documents what "owner" means there: for example, a ticket's reporter or its project lead, a document's owner, or the parties to a contract. A project may override that choice per scheme in its config. `ratified_by` must be one of `owners`.
+The checker finds the quote in the normalized text and reads the author of that span from `attribution`:
 
-### 6.3 Text and status are separate
+- **Comments and messages** are attributed to their authors.
+- **Ticket and document bodies** are attributed to their creators, as the provider reports them.
+- **Repository files** are attributed line by line to the commit author, as `git blame` reports it.
 
-Any resolver can supply text. Only a status provider configured for that scheme can supply status, and a text resolver cannot claim ratification on its own behalf. A ref whose scheme has no status provider is `proposed`. This keeps the rule from §3: the system that serves a document is not, by serving it, the authority that ratified it.
+A quote that spans text by several authors is attributed to all of them, and each must be authorized. A span with no author is reported as LC013.
 
 ### 6.4 Bindings
 
 | Binding | Supplies | How |
 |---|---|---|
-| `builtin: file` | text | Reads files in the repository at the current commit. |
-| `builtin: git-approval` | status | Reads frontmatter status and checks pull-request approval (§6.5). |
-| `nango` | text | The default for external tools. Fetches the provider's API through a Nango proxy, which handles OAuth, token refresh and rate limits, then converts the response to text with a per-provider extractor. |
-| `ledger` | text, status | Delegates to a governance ledger that records sign-offs, such as Bicameral. This is the binding that can return `ratified` for sources outside Git, such as tickets, documents and meeting notes. |
+| `builtin: file` | text, attribution | Reads files in the repository at the current commit, attributed line by line with `git blame`. |
+| `nango` | text, attribution | The default for external tools. Fetches the provider's API through a Nango proxy, which handles OAuth, token refresh and rate limits, then converts the response to text with a per-provider extractor. |
 
-**Why Nango.** Most of the work in an integration is authentication: OAuth flows, token refresh and per-provider quirks. Nango's proxy covers that for several hundred APIs and returns the provider's raw responses, so Live Comments controls exactly how text is extracted. The extractors are small, pure functions from an API response to plain text, one per provider. v0 ships extractors for GitHub, Linear, Notion, Jira and Google Docs.
+**Why Nango.** Most of the work in an integration is authentication: OAuth flows, token refresh and per-provider quirks. Nango's proxy covers that for several hundred APIs and returns the provider's raw responses, so Live Comments controls exactly how text is extracted. The extractors are small, pure functions from an API response to normalized text and its attribution, one per provider. v0 ships extractors for GitHub, Linear, Notion, Jira and Google Docs.
 
 Live Comments needs only Nango's Auth and Proxy features, which are exactly what Nango's free self-hosted option includes. Projects should know two things before choosing a deployment. Nango Cloud routes source text, including tickets and contracts, through a third party. Nango is licensed under the Elastic License 2.0, which permits self-hosting for internal use but is not an open-source license.
 
-Nango supplies text only. It serves documents and does not record who ratified them, so a `nango` source is `proposed` unless a status provider says otherwise (§6.3).
-
 *Later versions:* a `command` binding (an executable speaking the contract as JSON over stdin and stdout) and an `mcp` binding, for sources Nango does not cover.
 
-### 6.5 Ratified decision files
+### 6.5 Authority
 
-A decision file carries frontmatter:
+In a governed area, every `@source` must quote words written by a principal authorized for that code, and an `@open` can be filled only by such a source (LC009). Who is authorized is declared in governed files outside the code (§6.6, §6.7). Like CODEOWNERS, they take effect only once merged through a reviewed pull request, so an agent can write citations and openings freely but cannot decide whose words count.
 
-```yaml
----
-status: proposed | ratified | superseded
-superseded_by: 0012-discounts-v2.md   # when superseded
----
-```
+Live Comments does not record approval or sign-off. It checks who wrote the words a rule rests on, not whether anyone later endorsed them.
 
-A `ratified` status counts **only if** the commit that set it was merged through a pull request approved by a code owner of the decisions directory, under branch protection. The approval is the ratifying act. Because an agent cannot produce that approval, it cannot ratify its own sources. If the status was set any other way, the checker treats it as `proposed`.
+Reports show, next to each `@open`, the principals who can fill it. When no rule covers a governed scope, or a quote's author cannot be mapped to a principal, "who decides" is reported as an open question in its own right instead of being guessed.
 
-### 6.6 Tickets, messages and documents
+### 6.6 Identity
 
-Without a ledger, text from trackers, chat and documents is `proposed`. A ticket records what someone asked for, not what was agreed. A project without a ledger can still rely on such a source by writing a decision file that quotes it and ratifying that file (§6.5).
-
-### 6.7 Standing
-
-Authority to settle a rule belongs to the external owner of the source that settles it. A ratified ticket carries its owner's authority. So does a signed contract or an approved decision file. Live Comments never decides who that owner is. It reads `owners` and `ratified_by` from the status provider and checks them against each other and against the owners file entry (§6.9) for the `@open` the source replaces.
-
-Reports show, next to each `@open`, the principals that can fill it. If no owners entry matches, the report says that any ratified source can. When two cited sources conflict, or a source's owners cannot be mapped to principals (§6.8), "who decides" is reported as an open question in its own right instead of being guessed.
-
-Standing is evaluated as of the version cited. If a source's owners change afterward, `sync` reports the change but does not revoke an earlier ratification.
-
-### 6.8 Identity
-
-The same person appears as different accounts in different systems: a GitHub login, a Linear user, a Slack member ID, an email address on a contract. Checking an opening's owners (§6.9) against a source's `owners` therefore needs a map from accounts to people.
+The same person appears as different accounts in different systems: a GitHub login, a Linear user, a Slack member ID, an email address on a contract. Checking an opening's owners (§6.7) against a source's `owners` therefore needs a map from accounts to people.
 
 `live-comments.identities.json` defines **principals**, each a person or a group, and the external accounts that belong to them:
 
@@ -189,14 +162,15 @@ The same person appears as different accounts in different systems: a GitHub log
 }
 ```
 
-- **The identity file confers authority, so it is governed like the decisions directory.** A mapping counts only if it was merged through a pull request approved by the file's code owners. Otherwise anyone could gain standing by adding their own account to a principal.
+- **The identity file confers authority, so it is governed like CODEOWNERS.** A mapping counts only if it was merged through a pull request approved by the file's code owners. Otherwise anyone could gain standing by adding their own account to a principal.
 - **Matching is assisted, not automatic.** `live-comments identities suggest` proposes mappings, for example from verified emails that several systems share. It writes proposals only, and a person approves them.
-- **Unmapped accounts have no standing.** A source owned by an account that maps to no principal can still be cited. It cannot fill an `@open` that has an owners entry, and the report lists the account as unmapped (LC010).
+- **Unmapped accounts have no authority.** Words written by an account that maps to no principal can be cited outside governed areas, but not inside them (LC010).
+- **Agents never hold authority.** Accounts used by coding agents and bots are marked as such, and words they wrote never satisfy the authority check, even when written under a person's credentials that the provider can tell apart.
 - **Directories can replace the file.** A project with an identity provider that supports SCIM, or a ledger that already resolves identities, can configure it as the identity source. The file is the fallback for projects without one.
 
-### 6.9 Owners of open questions
+### 6.7 Owners of open questions
 
-`live-comments.owners.json` says whose sources may fill an opening. It is governed like the identity file: an entry counts only if it was merged through a pull request approved by the file's code owners. An agent can therefore write `@open` freely but cannot choose who settles it.
+`live-comments.owners.json` says whose words may bind each area of code. It is governed like the identity file: an entry counts only if it was merged through a pull request approved by the file's code owners. An agent can therefore write `@open` freely but cannot choose who settles it.
 
 ```json
 {
@@ -211,7 +185,7 @@ The same person appears as different accounts in different systems: a GitHub log
 ```
 
 - An `@open` with an id uses its `openings` entry. Otherwise the most specific matching `paths` glob applies.
-- A `@source` that replaces an `@open` must come from a source owned by one of that entry's principals (LC009).
+- Every `@source` in the scope must quote words written by one of that entry's principals, and an `@open` there can be filled only by such a quote (LC009).
 
 **Keeping code and owners file in sync.** Line numbers are never stored, because they drift with every edit. The id is the reference, and the line is computed:
 
@@ -230,17 +204,20 @@ The same person appears as different accounts in different systems: a GitHub log
     "resolver": "nango:linear",
     "retrieved_at": "2026-10-30T14:02:11Z",
     "version": "updated_at=2026-10-03T09:12:40Z",
+    "container": "team/PRICING",
     "text_sha256": "…",
     "text": "…normalized snapshot…",
-    "status": "proposed"
+    "attribution": [
+      { "start": 0,   "end": 412, "author": { "system": "linear", "account": "usr_8f2…" } },
+      { "start": 413, "end": 590, "author": { "system": "linear", "account": "usr_31a…" } }
+    ]
   },
-  "file:decisions/0007-discounts.md": {
-    "uri": "file:decisions/0007-discounts.md",
+  "file:docs/pricing-policy.md": {
+    "uri": "file:docs/pricing-policy.md",
     "resolver": "builtin:file",
     "version": "git:3f9c2e1",
     "text_sha256": "…",
-    "status": "ratified",
-    "ratified_by": { "pr": 88, "approver": "…" }
+    "attribution": [ "…one entry per run of lines by the same commit author…" ]
   }
 }
 ```
@@ -256,8 +233,8 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | `live-comments read <ref>` | yes | Resolve and normalize one source, record it in the lockfile, and print the text to quote from (§6.2). |
 | `live-comments mcp` | yes | Run an MCP server whose `read_source` tool does the same as `read`, so coding agents read sources through the checker's path. |
 | `live-comments report` | none | List open questions and their owners, plus coverage per governed area. |
-| `live-comments rename` | none | Rename an opening id in the code and the owners file together (§6.9). |
-| `live-comments identities suggest` | yes | Propose account-to-principal mappings for review (§6.8). |
+| `live-comments rename` | none | Rename an opening id in the code and the owners file together (§6.7). |
+| `live-comments identities suggest` | yes | Propose account-to-principal mappings for review (§6.6). |
 
 ### 8.1 Diagnostics
 
@@ -267,31 +244,31 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | LC002 | error | check | Quote not found in the locked snapshot |
 | LC003 | error | check | Ref missing from the lockfile; run `sync` |
 | LC004 | error | check | Export in a governed area has no `@source` or `@open` |
-| LC005 | warn* | check | Cited source is `proposed` or `superseded`, not `ratified` |
 | LC006 | error | sync | Stale: the quote no longer appears in the current source |
 | LC007 | error | sync | Source unreachable or access denied |
 | LC008 | error | check | Quote falls inside text the resolver redacted |
-| LC009 | error | check | Source fills an `@open` but none of its owners belongs to that opening's principals |
-| LC010 | warn | check, sync | Source owner's account maps to no principal |
+| LC009 | error | check | Quoted words in a governed area were not written by a principal authorized for that code |
+| LC010 | warn | check, sync | Quoted words were written by an account that maps to no principal |
 | LC011 | error | check | `@open` id has no entry in the owners file |
 | LC012 | warn | check | Owners file entry is not used by any `@open` |
+| LC013 | error | check | Quoted span has no attributable author |
 | LC100 | info | check, report | Open question, with its owner |
 
-\* LC005's severity is set by `unratified` in the config.
 
 ## 9. Packaging
 
 - **CLI** built on the TypeScript compiler API. This is the authoritative checker.
 - **ESLint rule** wrapping `check`, for existing CI pipelines.
-- **Editor plugin** (later): hovers that show each quote and its status, and a "cite from linked issue" quick fix. TypeScript language-service plugins affect only the editor and cannot fail `tsc`, so enforcement belongs in the CLI or lint, not in a compiler plugin.
+- **Editor plugin** (later): hovers that show each quote and who wrote it, and a "cite from linked issue" quick fix. TypeScript language-service plugins affect only the editor and cannot fail `tsc`, so enforcement belongs in the CLI or lint, not in a compiler plugin.
 - The annotation grammar (§4), resolver contract and normalization (§6) and lockfile format (§7) are meant to be language-neutral. TypeScript is the reference implementation.
-- The reference implementation is built on Effect. The resolver contract is an Effect service, and each binding is a Layer: `file`, `nango` and `ledger` in production, fixtures in tests. Effect handles retries with backoff, timeouts, limits on concurrent requests and partial failure during `sync`, and its typed errors map onto LC007. Users of the CLI never see Effect.
-- The first release ships the `file`, `git-approval`, `nango` and `ledger` bindings, with extractors for GitHub, Linear, Notion, Jira and Google Docs.
+- The reference implementation is built on Effect. The resolver contract is an Effect service, and each binding is a Layer: `file` and `nango` in production, fixtures in tests. Effect handles retries with backoff, timeouts, limits on concurrent requests and partial failure during `sync`, and its typed errors map onto LC007. Users of the CLI never see Effect.
+- The first release ships the `file` and `nango` bindings, with extractors for GitHub, Linear, Notion, Jira and Google Docs.
 
 ## 10. Non-goals for v0
 
 - Checking whether a quote semantically supports the code
-- Sources that Nango or the ledger cannot reach
+- Recording approval or sign-off of decisions. Live Comments checks who wrote the words a rule rests on; endorsement belongs to governance tools such as Bicameral
+- Sources that Nango cannot reach
 - Languages other than TypeScript
 - Detecting uncited logic beyond the governed-export rule
 - Runtime behavior for open questions
@@ -301,9 +278,10 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 1. **Noise.** Should citations live inline, or in a sidecar file keyed by symbol, with inline tags optional? Inline citations are visible where the code is read; a sidecar keeps the code clean.
 2. **Citation laundering.** An agent pressured to satisfy LC004 can cite a nearby but irrelevant quote. Deterministic checks catch missing and misquoted citations, not irrelevant ones. What advisory signal is cheap enough to run on every PR?
 3. **Runtime semantics of open questions.** When an `@open` rule must run, should it fail closed, run a default explicitly marked provisional, or run every reading and log where they disagree?
-4. **Ratification outside Git.** How do contracts, tickets and meeting decisions get an unforgeable ratifying act without moving everything into pull requests?
-5. **Normalization edge cases.** Tables, code blocks, and quotes that span two comments in a thread or two blocks in a document.
-6. **Agents that bypass the read path.** An agent can still read a ticket through another tool and paraphrase it. LC002 catches the mismatch but not the reason. Should `read` record which session read which source, so a report can show quotes that were never read through it?
+4. **Normalization edge cases.** Tables, code blocks, and quotes that span two comments in a thread or two blocks in a document.
+5. **Agents that bypass the read path.** An agent can still read a ticket through another tool and paraphrase it. LC002 catches the mismatch but not the reason. Should `read` record which session read which source, so a report can show quotes that were never read through it?
+6. **Edited text.** A ticket body edited by several people, or an agent editing text under a person's credentials. What should attribution report when the provider's history is incomplete?
+7. **The authority format.** §6.6 and §6.7 are placeholders. They will be replaced by a single authority file whose format is the main design question of this project.
 
 ## 12. Related work
 
@@ -312,7 +290,7 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 - **AsDecided** proposes that agents cite architectural decisions by id, revision and status in plans and pull requests, with a checker confirming each record exists and applies.
 - **Standards.** OSLC (OASIS) defines linked-data integration between lifecycle tools and is used mainly by enterprise requirements-management tools. ReqIF exchanges requirements documents between tools as files. The Model Context Protocol is how Live Comments offers its read path to coding agents (§8). The W3C Web Annotation Data Model gives quote selectors and time states a standard shape, which Live Comments follows (§4.1, §7).
 
-Live Comments differs in four places: citations are verbatim quotes checked against external sources; the cited source's ratification status is part of the check; ratification is an act the code author cannot perform; and uncited logic is reported as an open question with an owner.
+Live Comments differs in four places: citations are verbatim quotes checked against external sources; each quote is attributed to the person who wrote it; who may decide each area of code is declared in governed files and checked against that author; and uncited logic is reported as an open question with the people who can close it.
 
 ## 13. Milestone 0
 
