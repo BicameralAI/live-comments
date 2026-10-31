@@ -50,12 +50,12 @@ Annotations are JSDoc tags. They attach to the declaration that immediately foll
 ### 4.2 `@open`
 
 ```
-@open "<question>" [owner=<principal>[,<principal>…]]
+@open [<id>] "<question>"
 ```
 
 Declares, deliberately, that a rule is not yet decided. An `@open` declaration passes the coverage check (§5) and is listed in every report until it is replaced by a `@source` that points at ratified material.
 
-`owner=` names who may fill the opening. Each `<principal>` is a name defined in the identity file (§6.8), never a raw account handle. When `owner=` is given, the `@source` that later replaces the `@open` must come from a source owned by one of those principals (LC009). Without `owner=`, any ratified source can fill it. Adding or changing `owner=` is a code change, so it goes through the same review as any other edit to a governed area.
+Code never names who may fill an opening. That is set in the governed owners file (§6.9), by path or by `<id>`. The optional `<id>` (for example `checkout.discount-stacking`) is needed only when one opening must have different owners from the rest of its path. The id is the only link between the comment and its owners entry. Tooling resolves the id to that entry's current line, so the link survives edits to either file.
 
 *Future:* distinguish a **parked** question (no one may choose yet) from a **permission** (the source explicitly allows either reading, so the implementer may choose). v0 has only `@open`.
 
@@ -133,6 +133,10 @@ Any resolver can supply text. Only a status provider configured for that scheme 
 | `command` | text, status | Runs an executable that speaks the contract as JSON over stdin and stdout, for sources that have no MCP server. |
 | `ledger` | text, status | Delegates to a governance ledger that records sign-offs, such as Bicameral. This is the binding that can return `ratified` for sources outside Git, such as tickets, documents and meeting notes. |
 
+**Authentication.** Most of the work in an integration is authentication: OAuth flows, token refresh and per-provider quirks. The core does not handle it. A resolver may use an auth broker such as Nango, whose proxy returns raw provider API responses with managed credentials, or Composio, which exposes provider actions as agent tools and MCP servers. Either fits behind the `command` binding. A broker never supplies status, because it serves documents and does not record who ratified them (§6.3).
+
+Before relying on a broker, a project should check two things. Hosted brokers route source text, including tickets and contracts, through a third party. Self-hosted options and their licenses differ by vendor and plan.
+
 ### 6.5 Ratified decision files
 
 A decision file carries frontmatter:
@@ -152,15 +156,15 @@ Without a ledger, text from trackers, chat and documents is `proposed`. A ticket
 
 ### 6.7 Standing
 
-Authority to settle a rule belongs to the external owner of the source that settles it. A ratified ticket carries its owner's authority. So does a signed contract or an approved decision file. Live Comments never decides who that owner is. It reads `owners` and `ratified_by` from the status provider and checks them against each other and against any `owner=` on the `@open` the source replaces.
+Authority to settle a rule belongs to the external owner of the source that settles it. A ratified ticket carries its owner's authority. So does a signed contract or an approved decision file. Live Comments never decides who that owner is. It reads `owners` and `ratified_by` from the status provider and checks them against each other and against the owners file entry (§6.9) for the `@open` the source replaces.
 
-Reports show, next to each `@open`, the principals that can fill it. If no `owner=` is given, the report says that any ratified source can. When two cited sources conflict, or a source's owners cannot be mapped to principals (§6.8), "who decides" is reported as an open question in its own right instead of being guessed.
+Reports show, next to each `@open`, the principals that can fill it. If no owners entry matches, the report says that any ratified source can. When two cited sources conflict, or a source's owners cannot be mapped to principals (§6.8), "who decides" is reported as an open question in its own right instead of being guessed.
 
 Standing is evaluated as of the version cited. If a source's owners change afterward, `sync` reports the change but does not revoke an earlier ratification.
 
 ### 6.8 Identity
 
-The same person appears as different accounts in different systems: a GitHub login, a Linear user, a Slack member ID, an email address on a contract. Checking `owner=` against a source's `owners` therefore needs a map from accounts to people.
+The same person appears as different accounts in different systems: a GitHub login, a Linear user, a Slack member ID, an email address on a contract. Checking an opening's owners (§6.9) against a source's `owners` therefore needs a map from accounts to people.
 
 `live-comments.identities.json` defines **principals**, each a person or a group, and the external accounts that belong to them:
 
@@ -175,8 +179,33 @@ The same person appears as different accounts in different systems: a GitHub log
 
 - **The identity file confers authority, so it is governed like the decisions directory.** A mapping counts only if it was merged through a pull request approved by the file's code owners. Otherwise anyone could gain standing by adding their own account to a principal.
 - **Matching is assisted, not automatic.** `live-comments identities suggest` proposes mappings, for example from verified emails that several systems share. It writes proposals only, and a person approves them.
-- **Unmapped accounts have no standing.** A source owned by an account that maps to no principal can still be cited. It cannot fill an `@open` that names `owner=`, and the report lists the account as unmapped (LC010).
+- **Unmapped accounts have no standing.** A source owned by an account that maps to no principal can still be cited. It cannot fill an `@open` that has an owners entry, and the report lists the account as unmapped (LC010).
 - **Directories can replace the file.** A project with an identity provider that supports SCIM, or a ledger that already resolves identities, can configure it as the identity source. The file is the fallback for projects without one.
+
+### 6.9 Owners of open questions
+
+`live-comments.owners.json` says whose sources may fill an opening. It is governed like the identity file: an entry counts only if it was merged through a pull request approved by the file's code owners. An agent can therefore write `@open` freely but cannot choose who settles it.
+
+```json
+{
+  "paths": {
+    "src/checkout/**": ["pricing"],
+    "src/billing/refunds/**": ["finance-ops", "pricing-lead"]
+  },
+  "openings": {
+    "checkout.discount-stacking": ["pricing-lead"]
+  }
+}
+```
+
+- An `@open` with an id uses its `openings` entry. Otherwise the most specific matching `paths` glob applies.
+- A `@source` that replaces an `@open` must come from a source owned by one of that entry's principals (LC009).
+
+**Keeping code and owners file in sync.** Line numbers are never stored, because they drift with every edit. The id is the reference, and the line is computed:
+
+- `check` reports an `@open` id with no `openings` entry (LC011) and an `openings` entry that no `@open` uses (LC012). Together these catch a rename made on one side only.
+- `live-comments rename <old> <new>` renames an id in the code and in the owners file in one change.
+- The editor plugin resolves an id to its entry's current line, for go-to-definition and for a hover showing the owners. `report` prints the same location (`live-comments.owners.json:9`), so links in CI output point at the right line.
 
 ## 7. Lockfile
 
@@ -213,6 +242,8 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | `live-comments check` | none | Parse annotations and verify them against the lockfile. Deterministic; intended for every save and for CI. |
 | `live-comments sync` | yes | Re-fetch every referenced source, update the lockfile, and report what changed. Run on demand, nightly, or on PRs. |
 | `live-comments report` | none | List open questions and their owners, plus coverage per governed area. |
+| `live-comments rename` | none | Rename an opening id in the code and the owners file together (§6.9). |
+| `live-comments identities suggest` | yes | Propose account-to-principal mappings for review (§6.8). |
 
 ### 8.1 Diagnostics
 
@@ -226,8 +257,10 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | LC006 | error | sync | Stale: the quote no longer appears in the current source |
 | LC007 | error | sync | Source unreachable or access denied |
 | LC008 | error | check | Quote falls inside text the resolver redacted |
-| LC009 | error | check | Source fills an `@open` but none of its owners belongs to the named principals |
+| LC009 | error | check | Source fills an `@open` but none of its owners belongs to that opening's principals |
 | LC010 | warn | check, sync | Source owner's account maps to no principal |
+| LC011 | error | check | `@open` id has no entry in the owners file |
+| LC012 | warn | check | Owners file entry is not used by any `@open` |
 | LC100 | info | check, report | Open question, with its owner |
 
 \* LC005's severity is set by `unratified` in the config.
