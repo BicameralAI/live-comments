@@ -10,8 +10,9 @@
 <h3 align="center">Comments tracked to their source, so your agents don't make up the rules.</h3>
 
 <p align="center">
-  Every business rule in your code cites the ticket, doc or file it came from.<br>
-  Every rule nobody has decided yet is marked as an open question, and stays open until someone with authority answers it.
+  Every business rule in your code cites the ticket, doc or file it came from, and stays in sync<br>
+  as those sources are edited, as teams change, and as the code changes in review.<br>
+  Every rule nobody has decided yet is an open question that stays open until someone with authority answers it.
 </p>
 
 <p align="center">
@@ -40,7 +41,7 @@ export function applyDiscounts(codes: Code[]): Price { … }
 export function applyGiftCard(card: GiftCard, total: Price): Price { … }
 ```
 
-`live-comments check` confirms the quote is still in ENG-142, that the person who wrote it is on the pricing team, and that the gift-card rule is still waiting on an answer. When someone on the pricing team answers in ENG-188, `sync` shows you their words, and the `@open` becomes a `@source`.
+`live-comments check` confirms the quote is still in ENG-142, that the person who wrote it is on the pricing team, and that the gift-card rule is still waiting on an answer. When someone on the pricing team answers in ENG-188, `sync` shows you their words, and the `@open` becomes a `@source`. If ENG-142 is later edited, or its author leaves the pricing team, the next `sync` tells you which rules that touches.
 
 ## Why
 
@@ -62,9 +63,20 @@ Most tools can only describe decisions that were made. `@open` describes one tha
 /** @open checkout.gift-cards "Do gift cards stack with discounts?" by pricing in linear:ENG-188 options "yes" | "no, applied after" */
 ```
 
-- **It is a hole, not a TODO.** The checker lists every open question with who should answer it. A governed export can't silently drop it.
-- **It can't be filled by guessing.** It becomes a `@source` only by citing words that someone matching `by` wrote. With `sticky` on, the `by` and `in` carry over, so the authority requirement survives the answer.
-- **Answers find you.** When an `@open` points at a thread, `sync` reports every passage written there by someone who could answer it (LC019). Deciding whether it actually answers the question is left to a person or an agent.
+It is a typed hole for a product decision: it records that the rule is undecided, who may decide it, and where the answer should be written. It can only be filled one way, and every other path is caught:
+
+| What happens | Result |
+|---|---|
+| The question is written | Listed in every `check` and `report` with who should answer it (LC100). A governed export can't drop it silently. |
+| Someone without authority replies in ENG-188 | Nothing. Their words are not an answer. |
+| A bot or coding agent replies, even under a person's account the tool can tell apart | Nothing. Agents never hold authority. |
+| Someone on the pricing team replies | `sync` reports their words as a possible answer, quoted (LC019). A person or agent decides whether it answers the question. |
+| It is flipped to a `@source` quoting that reply | Passes: the quote is in ENG-188, its author is on the pricing team, and the `by` and `in` carried over. |
+| It is flipped with a quote from someone else, or a paraphrase | Rejected (LC009, LC002). |
+| It is flipped and the `by` or `in` is dropped | Rejected in review (LC015), so an answer can't quietly lower the bar. |
+| It is deleted, or its `by` is changed, in a pull request | Shown in review against the base branch (LC016). |
+| The answer is later edited out of ENG-188 | The `@source` goes stale on the next `sync` (LC006). |
+| The person who answered later leaves the pricing team | The rule loses its authority on the next `sync` (LC009), and the lockfile diff shows who left. |
 
 ## Quick start
 
@@ -96,21 +108,33 @@ With `--base`, the check also reports every authority change in the pull request
 
 ```mermaid
 flowchart LR
-    T["Ticket · doc · file"] -->|"read (one path)"| L[("Lockfile<br/>snapshot + who wrote what")]
-    A["AUTHORITY<br/>people · places · names"] --> C
+    T["Ticket, doc or file"] -->|"read: one path for agents and checker"| L[("Lockfile<br/>snapshots, authors, memberships")]
+    A["AUTHORITY<br/>people, places, names"] --> C
     L --> C{"check"}
-    S["@source ref &quot;quote&quot; by …"] --> C
-    O["@open &quot;question&quot; by … in …"] --> C
+    S["@source ref, quote, by"] --> C
+    O["@open question, by, in"] --> C
     C -->|"quote gone"| E1["LC002 / LC006 stale"]
-    C -->|"wrong author"| E2["LC009"]
+    C -->|"wrong author"| E2["LC009 unauthorized"]
     C -->|"authorized words in the thread"| E3["LC019 possible answer"]
     E3 -->|"a person or agent flips it"| S
 ```
 
+A comment's status is never stored. It is recomputed from four inputs: the code, the lockfile, `AUTHORITY` and the config. When any of them changes, `sync` and `check --base` compare the before and after states and report exactly which rules moved:
+
+| What changed | What live-comments does |
+|---|---|
+| A cited ticket or doc is edited | Re-checks every quote from it. A removed quote goes stale (LC006); a citation without a quote reports that its source changed (LC014). |
+| The same words now come from someone else | Re-checks authority against the new author, not just the text (LC009). |
+| Someone joins or leaves a group used with `members(…)` | Re-evaluates every rule that names the group, and records the change in the lockfile so it is reviewable. |
+| `AUTHORITY` is edited | Re-evaluates every rule that uses a changed name, so a PR to `AUTHORITY` shows which rules gain or lose authority. |
+| A pull request changes annotations | Lists every authority change (LC016) and rejects answers that drop sticky arguments (LC015). |
+| An area becomes governed | Surfaces every export there with no annotation (LC004). |
+| A source can't be reached | Keeps the last good snapshot so `check` still runs offline, and reports the failure (LC007). |
+
 - **Sources** are read through a resolver per tool. External tools use a transport (Composio or Nango) for authentication and an extractor that turns the tool's API response into text with authors. GitHub and Linear extractors ship today; repository files are attributed with `git blame`.
 - **Normalization** strips formatting the same way for sources and quotes, so a quote copied from `read` output always matches.
-- **The lockfile** snapshots every source and group membership, so `check` runs offline and source changes show up as reviewable diffs.
-- **Status is computed, never stored.** A comment's state is a function of the code, the lockfile, `AUTHORITY` and the config, so the same inputs always give the same answer.
+- **The lockfile** snapshots every source and group membership, so `check` runs offline and upstream changes show up as reviewable diffs.
+- **Tested as a state machine.** Alongside unit and property tests, a model-based test drives random sequences of source edits, membership changes, quote changes and syncs, and checks every intermediate state against an independent reference model.
 
 ## `AUTHORITY`
 
