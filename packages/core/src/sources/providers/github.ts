@@ -56,7 +56,7 @@ export const github: Provider = {
       const author = user(issue.user)
       const createdAt = str(issue.created_at)
       const segments: Array<Segment> = [
-        { text: str(issue.title) ?? "", ...author, ...(createdAt ? { createdAt } : {}), id: "title" },
+        { text: stripMarkdown(str(issue.title) ?? ""), ...author, ...(createdAt ? { createdAt } : {}), id: "title" },
         { text: stripMarkdown(str(issue.body) ?? ""), ...author, ...(createdAt ? { createdAt } : {}), id: "body" },
         ...comments.map((c): Segment => {
           const r = rec(c)

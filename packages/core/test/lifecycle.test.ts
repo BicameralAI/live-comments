@@ -115,14 +115,14 @@ describe("lifecycle events", () => {
     const base = [parseFile("src/a.ts", CODE)]
     const head = [parseFile("src/a.ts", CODE.replace("by pricing", "by eve"))]
     const ds = compareCode(base, head, config())
-    expect(ds.map((d) => [d.code, d.message])).toEqual([["LC016", "authority changed on 'applyDiscounts': @source by pricing → @source by eve"]])
+    expect(ds.map((d) => [d.code, d.message])).toEqual([["LC016", "authority changed on 'applyDiscounts': by pricing → by eve"]])
   })
 
   it("code changed: a fill must keep sticky arguments", () => {
     const base = [parseFile("src/a.ts", `/** @open "Do codes stack?" by pricing in github:acme/shop options "yes" | "no" */\nexport const x = 1`)]
     const kept = [parseFile("src/a.ts", `/** @source github:acme/shop#1 "no" by pricing in github:acme/shop */\nexport const x = 1`)]
     const dropped = [parseFile("src/a.ts", `/** @source github:acme/shop#1 "no" */\nexport const x = 1`)]
-    expect(codes(compareCode(base, kept, config()))).toEqual(["LC016"])
+    expect(codes(compareCode(base, kept, config()))).toEqual([])
     expect(codes(compareCode(base, dropped, config()))).toEqual(["LC015", "LC016"])
     expect(codes(compareCode(base, dropped, config({ sticky: false })))).toEqual(["LC016"])
   })
@@ -157,6 +157,6 @@ describe("an @open", () => {
     // Flipping it: the @source keeps the sticky arguments and is authorized.
     const flipped = { ...answered.ws, files: [parseFile("src/a.ts", `/** @source github:acme/shop#7 "No: gift cards apply after discounts." by pricing in github:acme/shop#7 */\nexport const giftCard = 1`)] }
     expect(evaluate(flipped).annotations[0]!.status).toBe("authorized")
-    expect(codes(compareCode([parseFile("src/a.ts", OPEN)], flipped.files, config()))).toEqual(["LC016"])
+    expect(codes(compareCode([parseFile("src/a.ts", OPEN)], flipped.files, config()))).toEqual([])
   })
 })

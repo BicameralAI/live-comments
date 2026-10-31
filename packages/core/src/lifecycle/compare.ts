@@ -15,7 +15,7 @@ const index = (files: ReadonlyArray<ParsedFile>) => {
 
 const authorityOf = (d: Declaration): ReadonlyArray<string> =>
   d.annotations
-    .map((a) => (a.authority ? `${a.kind === "open" ? "@open" : "@source"} by ${print(a.authority)}` : undefined))
+    .map((a) => (a.authority ? `by ${print(a.authority)}` : undefined))
     .filter((x): x is string => x !== undefined)
     .sort()
 

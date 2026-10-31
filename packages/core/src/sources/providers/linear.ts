@@ -56,7 +56,7 @@ export const linear: Provider = {
       const createdAt = str(issue.createdAt)
       const comments = arr(rec(issue.comments)?.nodes)
       const segments: Array<Segment> = [
-        { text: str(issue.title) ?? "", ...(creator ? { author: creator } : {}), ...(createdAt ? { createdAt } : {}), id: "title" },
+        { text: stripMarkdown(str(issue.title) ?? ""), ...(creator ? { author: creator } : {}), ...(createdAt ? { createdAt } : {}), id: "title" },
         { text: stripMarkdown(str(issue.description) ?? ""), ...(creator ? { author: creator } : {}), ...(createdAt ? { createdAt } : {}), id: "description" },
         ...comments.map((c): Segment => {
           const r = rec(c)
