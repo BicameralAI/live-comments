@@ -21,6 +21,7 @@
   <a href="skills/live-comments/SKILL.md"><img src="https://img.shields.io/badge/agent%20skill-SKILL.md-0891b2" alt="Agent skill: SKILL.md"></a>
   <img src="https://img.shields.io/badge/MCP-read__source-3f3f46" alt="MCP: read_source">
   <img src="https://img.shields.io/badge/TypeScript-Effect-3f3f46" alt="TypeScript, built on Effect">
+  <a href="#before-you-start"><img src="https://img.shields.io/badge/sources%20via-Composio%20%7C%20Nango-0891b2" alt="Sources via Composio or Nango"></a>
 </p>
 
 <p align="center">
@@ -78,6 +79,22 @@ It is a typed hole for a product decision: it records that the rule is undecided
 | The answer is later edited out of ENG-188 | The `@source` goes stale on the next `sync` (LC006). |
 | The person who answered later leaves the pricing team | The rule loses its authority on the next `sync` (LC009), and the lockfile diff shows who left. |
 
+## Before you start
+
+Live comments read your tickets and docs through an integration platform, so **you need an account on [Composio](https://composio.dev) or [Nango](https://nango.dev)** to cite anything outside the repository. Live Comments never stores your tool credentials; the platform handles sign-in and token refresh, and Live Comments only asks it for the documents you cite.
+
+| | Composio | Nango |
+|---|---|---|
+| Account | [composio.dev](https://composio.dev), hosted | [nango.dev](https://nango.dev) Cloud, or self-hosted |
+| Local use | Install the `composio` CLI and run `composio login` | Set `NANGO_SECRET_KEY` |
+| CI | Set `COMPOSIO_API_KEY` | Set `NANGO_SECRET_KEY` |
+| Connect a tool | `live-comments connect github` | `live-comments connect github --via nango --connection <id>` |
+| Notes | Proprietary hosted platform; MIT SDK | Elastic License 2.0. The free self-hosted edition is enough: Live Comments uses only its Auth and Proxy features |
+
+You can mix them: each tool picks its platform in `live-comments.config.json`. With a hosted platform, the text of the tickets and docs you cite passes through that provider, so pick the one your security review allows.
+
+Files in your own repository need neither: `@source file:docs/pricing.md` works out of the box, attributed with `git blame`.
+
 ## Quick start
 
 Tell your coding agent:
@@ -88,7 +105,7 @@ Or do it yourself:
 
 ```sh
 npx live-comments init                  # config, AUTHORITY, the agent skill, MCP setup
-npx live-comments connect github        # through Composio (or --via nango)
+npx live-comments connect github        # sign in through Composio (or --via nango)
 npx live-comments sync                  # read every cited source into the lockfile
 npx live-comments check                 # verify; exits non-zero on errors
 ```
@@ -131,7 +148,7 @@ A comment's status is never stored. It is recomputed from four inputs: the code,
 | An area becomes governed | Surfaces every export there with no annotation (LC004). |
 | A source can't be reached | Keeps the last good snapshot so `check` still runs offline, and reports the failure (LC007). |
 
-- **Sources** are read through a resolver per tool. External tools use a transport (Composio or Nango) for authentication and an extractor that turns the tool's API response into text with authors. GitHub and Linear extractors ship today; repository files are attributed with `git blame`.
+- **Sources** are read through a resolver per tool. External tools go through [Composio](https://composio.dev) or [Nango](https://nango.dev), which handle authentication, and an extractor that turns the tool's raw API response into text with authors. Extractors read each tool's own API format, so every extractor works over either platform. GitHub and Linear extractors ship today; repository files are attributed with `git blame`.
 - **Normalization** strips formatting the same way for sources and quotes, so a quote copied from `read` output always matches.
 - **The lockfile** snapshots every source and group membership, so `check` runs offline and upstream changes show up as reviewable diffs.
 - **Tested as a state machine.** Alongside unit and property tests, a model-based test drives random sequences of source edits, membership changes, quote changes and syncs, and checks every intermediate state against an independent reference model.
