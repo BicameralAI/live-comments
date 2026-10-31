@@ -56,6 +56,18 @@ Live comments fix both:
 - **Open questions are explicit.** An `@open` is a typed hole for a product decision: it records that a rule is undecided, who should decide it, and where the answer should come from. Agents are told never to fill it themselves.
 - **Authority comes from people.** Who counts as `pricing` is defined once, in a governed `AUTHORITY` file that code can't change. Agents and bots never hold authority.
 
+What that looks like after someone edits ENG-142, an engineer's comment gets quoted as a decision, and the pricing lead replies on the open question:
+
+```console
+$ npx live-comments check
+src/checkout/discounts.ts:12  LC002 error  quote not found in linear:ENG-142: "Only the best single discount applies per order"
+src/checkout/refunds.ts:7  LC009 error  linear:usr_31a in linear:ENG-150 does not satisfy 'by pricing'
+src/checkout/giftcards.ts:4  LC019 info  possible answer in linear:ENG-188 by linear:usr_8f2: "No: gift cards apply after discounts."
+src/checkout/giftcards.ts:4  LC100 info  open: "Do gift cards stack with discounts?" — to be answered by pricing in linear:ENG-188
+
+2 error(s), 0 warning(s), 2 note(s)
+```
+
 ## The `@open` tag
 
 Most tools can only describe decisions that were made. `@open` describes one that wasn't:
@@ -94,9 +106,10 @@ Live comments read your tickets and docs through an integration platform, so **y
 | Local use | Install the `composio` CLI and run `composio login` | Set `NANGO_SECRET_KEY` |
 | CI | Set `COMPOSIO_API_KEY` | Set `NANGO_SECRET_KEY` |
 | Connect a tool | `live-comments connect github` | `live-comments connect github --via nango --connection <id>` |
+| Sources | GitHub, Linear, Notion, Jira, Google Docs, Slack | the same |
 | Notes | Proprietary hosted platform; MIT SDK | Elastic License 2.0. The free self-hosted edition is enough: Live Comments uses only its Auth and Proxy features |
 
-You can mix them: each tool picks its platform in `live-comments.config.json`. With a hosted platform, the text of the tickets and docs you cite passes through that provider, so pick the one your security review allows.
+You can mix them: each tool picks its platform in `live-comments.config.json`. Jira also needs your site: `live-comments connect jira --base-url https://<site>.atlassian.net`. With a hosted platform, the text of the tickets and docs you cite passes through that provider, so pick the one your security review allows.
 
 Files in your own repository need neither: `@source file:docs/pricing.md` works out of the box, attributed with `git blame`.
 
@@ -172,9 +185,10 @@ Early preview. What works and is tested:
 
 - Annotation parsing, authority expressions, normalization and the comment lifecycle, covered by unit, property-based and model-based (state machine) tests
 - The CLI end to end in a real git repository, including the MCP server
-- GitHub sources through the Composio CLI, end to end against a public repository
+- GitHub sources through the Composio CLI, end to end against a public repository, and Slack threads read live through Composio
+- Linear, Notion, Jira and Google Docs extractors, against recorded API responses
 
-Not done yet: Notion, Jira and Google Docs extractors; live tests of the Nango transport and the Composio SDK path; languages other than TypeScript. The [spec](SPEC.md) lists the open design questions.
+Not done yet: live tests of Linear, Notion, Jira and Google Docs, of the Nango transport and of the Composio SDK path; languages other than TypeScript. The [spec](SPEC.md) lists the open design questions.
 
 ## Contributing
 

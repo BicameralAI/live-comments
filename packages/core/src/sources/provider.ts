@@ -21,14 +21,22 @@ export interface DirectoryListing {
 }
 
 /** Sends a request and returns the parsed body, with HTTP failures already mapped to errors. */
-export type Http = (req: Omit<HttpRequest, "baseUrl">) => Effect.Effect<unknown, ResolveError>
+export type Http = (
+  req: Omit<HttpRequest, "baseUrl" | "hostOverride"> & {
+    /** A host other than the provider's base, e.g. the Drive API for Google Docs. */
+    readonly baseUrl?: string
+  }
+) => Effect.Effect<unknown, ResolveError>
 
 export interface Provider {
   /** The ref scheme and account system, e.g. "github". */
   readonly system: string
   /** Composio toolkit slug. */
   readonly toolkit: string
+  /** Default API base. A resolver's `baseUrl` setting overrides it (required when empty, e.g. Jira). */
   readonly baseUrl: string
+  /** What to tell the user when `baseUrl` must be configured. */
+  readonly baseUrlHint?: string
   /** Recognize provider-specific error bodies, for transports that cannot report a status. */
   readonly classify?: (body: unknown) => { kind: "not_found" | "denied" | "rate_limited"; message: string } | undefined
   readonly extract: (ref: Ref, http: Http) => Effect.Effect<Extracted, ResolveError>

@@ -20,6 +20,8 @@ const FileResolver = Schema.Struct({ builtin: Schema.Literal("file"), root: Sche
 
 const ProviderResolver = Schema.Struct({
   provider: Schema.String,
+  /** API base for providers whose host differs per customer, e.g. Jira Cloud. */
+  baseUrl: Schema.optional(Schema.String),
   nango: Schema.optional(NangoConfig),
   composio: Schema.optional(ComposioConfig)
 })

@@ -149,7 +149,18 @@ A quote that spans text by several authors is attributed to all of them, and eac
 | `builtin: file` | Reads files in the repository at the current commit, attributed line by line with `git blame`. |
 | `provider` | Reads an external tool in two steps: a **transport** makes authenticated requests to the tool's own API, and an **extractor** turns the raw responses into normalized text and attribution. |
 
-**Extractors** are small, pure functions from a provider's raw API responses to segments of text with their authors, one per provider. Because they read the provider's own API format, they do not depend on the transport. v0 ships extractors for GitHub, Linear, Notion, Jira and Google Docs. `directory` (§9) uses the same transports to list a provider's accounts and places.
+**Extractors** are small, pure functions from a provider's raw API responses to segments of text with their authors, one per provider. Because they read the provider's own API format, they do not depend on the transport. `directory` (§9) uses the same transports to list a provider's accounts and places. v0 ships:
+
+| Ref | Source | Authors | Places |
+|---|---|---|---|
+| `github:owner/repo#12` | Issue or pull request, with comments | Issue author; each comment's author | `github:owner`, `github:owner/repo` |
+| `linear:ENG-142` | Issue, with comments | Creator; each comment's author | `linear:team/ENG` |
+| `notion:<page id>` | Page blocks, nested, with comments | Each block's last editor; each comment's author | `notion:database/<id>`, `notion:page/<id>` |
+| `jira:PAY-311` | Issue, with comments (resolver needs `baseUrl`) | Creator; each comment's author | `jira:project/PAY` |
+| `gdocs:<document id>` | Document, all tabs, with comments and replies | Owner (from Drive), as `email:`; each comment's author | `gdocs:folder/<id>` |
+| `slack:C0123/1793415412.122609` | A message and its thread | Each message's author | `slack:channel/C0123` |
+
+Messages and comments that a provider marks as coming from a bot or app are flagged and never satisfy authority, including messages a person's integration posted on their behalf.
 
 **Transports** handle what makes integrations expensive to build: OAuth flows, token refresh and per-provider authentication. A transport only has to send an authenticated HTTP request to the provider's API and return the raw response. v0 ships two:
 
@@ -270,7 +281,7 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 | `live-comments who <expr>` | none | Expand an authority expression into the people and places that satisfy it. |
 | `live-comments authority` | none | Print every name in the authority file, fully expanded, as JSON. |
 | `live-comments directory <system>` | yes | List a connected system's accounts (id, display name, email) and places (id, name) as JSON, so person and place definitions can be written with exact ids. |
-| `live-comments connect <system> [--via nango\|composio]` | yes | Connect a tool through a transport, which asks the user to sign in, and add its resolver to the config. |
+| `live-comments connect <system> [--via nango\|composio] [--base-url <url>]` | yes | Connect a tool through a transport, which asks the user to sign in, and add its resolver to the config. Jira needs `--base-url`. |
 | `live-comments report` | none | List open questions with who should answer them, plus coverage per governed area. |
 
 ### 9.1 Diagnostics
@@ -318,7 +329,7 @@ Live Comments ships an agent skill that tells coding agents when to annotate, ho
 - **Editor plugin** (later): hovers that show each quote, who wrote it and what `by` expands to, and a quick fix that fills an `@open` from a linked source. TypeScript language-service plugins affect only the editor and cannot fail `tsc`, so enforcement belongs in the CLI or lint, not in a compiler plugin.
 - The annotation grammar (§4), resolver contract and normalization (§6), authority expressions (§7) and lockfile format (§8) are meant to be language-neutral. TypeScript is the reference implementation.
 - The reference implementation is built on Effect. The resolver contract is an Effect service, and each binding is a Layer. Transports are a separate service with `nango` and `composio` Layers, so every extractor runs unchanged over either; tests provide recorded responses through a fixture transport. Effect handles retries with backoff, timeouts, limits on concurrent requests and partial failure during `sync`, and its typed errors map onto LC007. Users of the CLI never see Effect.
-- The first release ships the `file` and `provider` bindings, the `nango` and `composio` transports, extractors for GitHub, Linear, Notion, Jira and Google Docs, and the skill.
+- The first release ships the `file` and `provider` bindings, the `nango` and `composio` transports, extractors for GitHub, Linear, Notion, Jira, Google Docs and Slack, and the skill.
 
 ## 12. Non-goals for v0
 

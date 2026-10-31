@@ -12,6 +12,14 @@ export interface HttpRequest {
   readonly path: string
   readonly query?: Readonly<Record<string, string>>
   readonly body?: unknown
+  readonly headers?: Readonly<Record<string, string>>
+  /**
+   * Set when the request goes to a host other than the integration's default,
+   * e.g. the Drive API for a Google Docs source. Composio then uses `toolkit`'s
+   * connection; Nango sends `Base-Url-Override`.
+   */
+  readonly hostOverride?: boolean
+  readonly toolkit?: string
 }
 
 export interface HttpResponse {
@@ -60,9 +68,11 @@ export const nangoTransport = (c: Extract<TransportConfig, { kind: "nango" }>): 
         const res = await fetch(`${(c.host ?? "https://api.nango.dev").replace(/\/$/, "")}/proxy${req.path}${qs}`, {
           method: req.method,
           headers: {
+            ...req.headers,
             Authorization: `Bearer ${secret}`,
             "Provider-Config-Key": c.integration,
             "Connection-Id": c.connection,
+            ...(req.hostOverride ? { "Base-Url-Override": req.baseUrl } : {}),
             ...(req.body !== undefined ? { "Content-Type": "application/json" } : {})
           },
           ...(req.body !== undefined ? { body: JSON.stringify(req.body) } : {})
@@ -92,7 +102,8 @@ export const composioCliTransport = (c: Extract<TransportConfig, { kind: "compos
   request: (req) =>
     Effect.tryPromise({
       try: async (signal) => {
-        const args = ["proxy", url(req), "--toolkit", c.toolkit, "-X", req.method]
+        const args = ["proxy", url(req), "--toolkit", req.toolkit ?? c.toolkit, "-X", req.method]
+        for (const [k, v] of Object.entries(req.headers ?? {})) args.push("-H", `${k}: ${v}`)
         if (req.body !== undefined) args.push("-H", "content-type: application/json", "-d", JSON.stringify(req.body))
         const { stdout, stderr, code } = await run(process.env.COMPOSIO_CLI ?? "composio", args, signal)
         const starts = [stdout.indexOf("{"), stdout.indexOf("[")].filter((i) => i >= 0)
@@ -128,11 +139,13 @@ export const composioSdkTransport = (c: Extract<TransportConfig, { kind: "compos
           }
         }
         const client = new mod.Composio({ apiKey })
+        const sameToolkit = req.toolkit === undefined || req.toolkit === c.toolkit
         const res = await client.tools.proxyExecute({
           endpoint: url(req),
           method: req.method,
-          ...(c.connectedAccount ? { connectedAccountId: c.connectedAccount } : {}),
-          ...(req.body !== undefined ? { body: req.body } : {})
+          ...(c.connectedAccount && sameToolkit ? { connectedAccountId: c.connectedAccount } : {}),
+          ...(req.body !== undefined ? { body: req.body } : {}),
+          ...(req.headers ? { parameters: Object.entries(req.headers).map(([name, value]) => ({ in: "header", name, value })) } : {})
         })
         return { status: res.status, body: res.data }
       },

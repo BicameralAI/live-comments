@@ -37,7 +37,8 @@ Usage: live-comments <command> [options]
   authority                     Every name in AUTHORITY, expanded (JSON)
   directory <system> [--scope <s>]  A connected system's accounts and places (JSON)
   report                        Open questions and coverage
-  connect <system> [--via composio|nango] [--connection <id>]
+  connect <system> [--via composio|nango] [--connection <id>] [--base-url <url>]
+                                Systems: github, linear, notion, jira, gdocs, slack
   mcp                           Serve read_source, context, who, authority, directory over MCP
 
 Options: --json for machine-readable output, --root <dir> (default: current directory)`
@@ -162,6 +163,11 @@ const main = async (): Promise<number> => {
         return 1
       }
       const via = flag("via") || "composio"
+      const baseUrl = flag("base-url") || undefined
+      if (!provider.baseUrl && !baseUrl) {
+        console.error(provider.baseUrlHint ?? `connect ${system} needs --base-url`)
+        return 1
+      }
       let entry: Record<string, unknown>
       if (via === "composio") {
         const r = spawnSync(process.env.COMPOSIO_CLI ?? "composio", ["link", provider.toolkit], { stdio: "inherit" })
@@ -183,6 +189,7 @@ const main = async (): Promise<number> => {
       }
       const file = path.join(root, CONFIG_FILE)
       const config = JSON.parse(await readFile(file, "utf8").catch(() => "{}")) as Record<string, unknown>
+      if (baseUrl) entry.baseUrl = baseUrl
       config.resolvers = { ...(config.resolvers as object | undefined), [system]: entry }
       await writeFile(file, JSON.stringify(config, null, 2) + "\n")
       console.log(`connected ${system} through ${via}; updated ${CONFIG_FILE}`)

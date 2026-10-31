@@ -5,11 +5,15 @@ import { normalizeSegments, sha256 } from "../normalize.js"
 import { Denied, ExtractionFailed, NotFound, RateLimited, type ResolveError, Unreachable, UnknownScheme } from "./errors.js"
 import { extractFile } from "./file.js"
 import type { DirectoryListing, Extracted, Http, Provider } from "./provider.js"
+import { gdocs } from "./providers/gdocs.js"
 import { github } from "./providers/github.js"
+import { jira } from "./providers/jira.js"
 import { linear } from "./providers/linear.js"
+import { notion } from "./providers/notion.js"
+import { slack } from "./providers/slack.js"
 import { type Transport, type TransportConfig, Transports } from "./transport.js"
 
-export const providers: Readonly<Record<string, Provider>> = { github, linear }
+export const providers: Readonly<Record<string, Provider>> = { github, linear, notion, jira, gdocs, slack }
 
 /** Reads sources, memberships and directories, as the project's config says. */
 export class Sources extends Context.Tag("live-comments/Sources")<
@@ -39,8 +43,12 @@ const transportConfig = (provider: Provider, c: Extract<ResolverConfig, { provid
   return { kind: "composio", toolkit: provider.toolkit }
 }
 
-const httpFor = (provider: Provider, transport: Transport, ref: string): Http => (req) =>
-  transport.request({ ...req, baseUrl: provider.baseUrl }).pipe(
+const httpFor = (provider: Provider, transport: Transport, ref: string, configuredBase: string | undefined): Http => (req) =>
+  transport.request({
+    ...req,
+    baseUrl: req.baseUrl ?? configuredBase ?? provider.baseUrl,
+    ...(req.baseUrl !== undefined || configuredBase !== undefined ? { hostOverride: true } : {})
+  }).pipe(
     Effect.mapError((f): ResolveError =>
       f.kind === "denied" ? new Denied({ ref, message: f.message }) : new Unreachable({ ref, message: f.message })
     ),
@@ -85,8 +93,11 @@ export const makeSources = (config: Config, root: string, transports: Context.Ta
     Effect.gen(function* () {
       const provider = providers[c.provider]
       if (!provider) return yield* new UnknownScheme({ ref, message: `no provider named '${c.provider}'` })
+      if (!c.baseUrl && !provider.baseUrl) {
+        return yield* new UnknownScheme({ ref, message: provider.baseUrlHint ?? `set "baseUrl" for the ${provider.system} resolver` })
+      }
       const transport = transports.get(transportConfig(provider, c))
-      return { provider, transport, http: httpFor(provider, transport, ref) }
+      return { provider, transport, http: httpFor(provider, transport, ref, c.baseUrl) }
     })
 
   return Sources.of({
