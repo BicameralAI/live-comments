@@ -5,6 +5,7 @@ import * as path from "node:path"
 import {
   authorityListing,
   check,
+  composioTransport,
   CONFIG_FILE,
   context,
   type Diagnostic,
@@ -64,6 +65,28 @@ const printDiagnostics = (ds: ReadonlyArray<Diagnostic>) => {
   for (const d of ds) console.log(`${d.file}${d.line ? `:${d.line}` : ""}  ${color(d.severity, `${d.code} ${d.severity}`)}  ${d.message}`)
   const n = (s: Diagnostic["severity"]) => ds.filter((d) => d.severity === s).length
   console.log(`\n${n("error")} error(s), ${n("warn")} warning(s), ${n("info")} note(s)`)
+}
+
+/** Jira over OAuth: find the site's API base from the sites the connection can reach. */
+const discoverBaseUrl = async (system: string, toolkit: string): Promise<string | undefined> => {
+  if (system !== "jira") return undefined
+  const res = await Effect.runPromise(
+    Effect.either(
+      composioTransport({ kind: "composio", toolkit }).request({
+        method: "GET",
+        baseUrl: "https://api.atlassian.com",
+        path: "/oauth/token/accessible-resources"
+      })
+    )
+  )
+  if (Either.isLeft(res) || !Array.isArray(res.right.body)) return undefined
+  const sites = res.right.body as Array<{ id?: string; url?: string }>
+  if (sites.length !== 1 || !sites[0]?.id) {
+    if (sites.length > 1) console.error(`this connection reaches several Jira sites:\n${sites.map((s) => `  https://api.atlassian.com/ex/jira/${s.id}  (${s.url})`).join("\n")}\nrerun with --base-url <one of them>`)
+    return undefined
+  }
+  console.log(`found Jira site ${sites[0].url}`)
+  return `https://api.atlassian.com/ex/jira/${sites[0].id}`
 }
 
 const sources = (ws: { config: Parameters<typeof SourcesLive>[0]; root: string }) => SourcesLive(ws.config, ws.root).pipe(Layer.provide(TransportsLive))
@@ -163,8 +186,8 @@ const main = async (): Promise<number> => {
         return 1
       }
       const via = flag("via") || "composio"
-      const baseUrl = flag("base-url") || undefined
-      if (!provider.baseUrl && !baseUrl) {
+      let baseUrl = flag("base-url") || undefined
+      if (!provider.baseUrl && !baseUrl && via !== "composio") {
         console.error(provider.baseUrlHint ?? `connect ${system} needs --base-url`)
         return 1
       }
@@ -176,6 +199,14 @@ const main = async (): Promise<number> => {
           return 1
         }
         entry = { provider: system, composio: {} }
+        if (!provider.baseUrl && !baseUrl) {
+          const found = await discoverBaseUrl(system, provider.toolkit)
+          if (!found) {
+            console.error(provider.baseUrlHint ?? `connect ${system} needs --base-url`)
+            return 1
+          }
+          baseUrl = found
+        }
       } else if (via === "nango") {
         const connection = flag("connection")
         if (!connection) {

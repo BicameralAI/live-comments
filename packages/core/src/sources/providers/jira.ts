@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Either } from "effect"
 import type { Account, Segment } from "../../domain.js"
 import { ExtractionFailed, NotADocument } from "../errors.js"
 import { arr, type Provider, rec, str } from "../provider.js"
@@ -23,7 +23,7 @@ export const jira: Provider = {
   toolkit: "jira",
   baseUrl: "",
   baseUrlHint:
-    'set "baseUrl" on the jira resolver: "https://<site>.atlassian.net" with Composio, or "https://api.atlassian.com/ex/jira/<cloudId>" with Nango',
+    'set "baseUrl" on the jira resolver: "https://api.atlassian.com/ex/jira/<cloudId>" for OAuth connections (live-comments connect jira finds it), or "https://<site>.atlassian.net" for API-token connections',
 
   classify: (body) => {
     const msgs = arr(rec(body)?.errorMessages).map((m) => String(m))
@@ -68,8 +68,12 @@ export const jira: Provider = {
           return { text: adfToText(c?.body), ...user(c?.author), ...(at ? { createdAt: at } : {}), ...(str(c?.id) ? { id: `comment-${str(c?.id)}` } : {}) }
         })
       ]
-      const self = str(issue.self) ?? ""
-      const site = self.replace(/\/rest\/api\/.*$/, "")
+      // Through OAuth, `self` points at api.atlassian.com; ask the site for its own URL.
+      let site = (str(issue.self) ?? "").replace(/\/rest\/api\/.*$/, "")
+      if (site.includes("api.atlassian.com")) {
+        const info = yield* Effect.either(http({ method: "GET", path: "/rest/api/3/serverInfo" }))
+        site = Either.isRight(info) ? (str(rec(info.right)?.baseUrl) ?? "") : ""
+      }
       const lastComment = comments.length > 0 ? str(rec(comments[comments.length - 1])?.updated) : undefined
       return {
         uri: site ? `${site}/browse/${ref.path}` : ref.raw,

@@ -156,7 +156,7 @@ A quote that spans text by several authors is attributed to all of them, and eac
 | `github:owner/repo#12` | Issue or pull request, with comments | Issue author; each comment's author | `github:owner`, `github:owner/repo` |
 | `linear:ENG-142` | Issue, with comments | Creator; each comment's author | `linear:team/ENG` |
 | `notion:<page id>` | Page blocks, nested, with comments | Each block's last editor; each comment's author | `notion:database/<id>`, `notion:page/<id>` |
-| `jira:PAY-311` | Issue, with comments (resolver needs `baseUrl`) | Creator; each comment's author | `jira:project/PAY` |
+| `jira:PAY-311` | Issue, with comments (resolver needs `baseUrl`; `connect` finds it for OAuth connections) | Creator; each comment's author | `jira:project/PAY` |
 | `gdocs:<document id>` | Document, all tabs, with comments and replies | Owner (from Drive), as `email:`; each comment's author | `gdocs:folder/<id>` |
 | `slack:C0123/1793415412.122609` | A message and its thread | Each message's author | `slack:channel/C0123` |
 

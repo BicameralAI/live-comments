@@ -109,7 +109,7 @@ Live comments read your tickets and docs through an integration platform, so **y
 | Sources | GitHub, Linear, Notion, Jira, Google Docs, Slack | the same |
 | Notes | Proprietary hosted platform; MIT SDK | Elastic License 2.0. The free self-hosted edition is enough: Live Comments uses only its Auth and Proxy features |
 
-You can mix them: each tool picks its platform in `live-comments.config.json`. Jira also needs your site: `live-comments connect jira --base-url https://<site>.atlassian.net`. With a hosted platform, the text of the tickets and docs you cite passes through that provider, so pick the one your security review allows.
+You can mix them: each tool picks its platform in `live-comments.config.json`. For Jira, `connect` finds your site through the connection; pass `--base-url https://<site>.atlassian.net` only for API-token connections. With a hosted platform, the text of the tickets and docs you cite passes through that provider, so pick the one your security review allows.
 
 Files in your own repository need neither: `@source file:docs/pricing.md` works out of the box, attributed with `git blame`.
 
@@ -185,10 +185,10 @@ Early preview. What works and is tested:
 
 - Annotation parsing, authority expressions, normalization and the comment lifecycle, covered by unit, property-based and model-based (state machine) tests
 - The CLI end to end in a real git repository, including the MCP server
-- GitHub sources through the Composio CLI, end to end against a public repository, and Slack threads read live through Composio
-- Linear, Notion, Jira and Google Docs extractors, against recorded API responses
+- All six sources read live through Composio: GitHub end to end against a public repository (open question, answer, flip), and Linear, Notion, Jira, Google Docs and Slack read and attributed against real workspaces
+- Every extractor also against recorded API responses, including error mapping and partial access (a Notion page without comment access, a Google Doc without Drive)
 
-Not done yet: live tests of Linear, Notion, Jira and Google Docs, of the Nango transport and of the Composio SDK path; languages other than TypeScript. The [spec](SPEC.md) lists the open design questions.
+Not done yet: live tests of the Nango transport and the Composio SDK path; languages other than TypeScript. The [spec](SPEC.md) lists the open design questions.
 
 ## Contributing
 
