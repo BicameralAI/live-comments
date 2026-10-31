@@ -36,6 +36,7 @@ A citation needs only a ref. Each extra part adds a check: a quote makes the che
 5. **Offline check, online sync.** `check` never touches the network. External sources are snapshotted into a committed lockfile, and refreshing that lockfile is a separate, explicit step.
 6. **One read path.** Whoever writes a citation, person or agent, reads the source through the same resolver and normalization the checker uses (§6.2). A quote is therefore always checked against exactly the text its author saw.
 7. **The code is the record.** Who decides what is written where the rule is, not in a separate map of paths to owners. Changes to it show up in review like any other change (§7.4).
+8. **The checker states facts; the agent judges.** The CLI only reads, verifies and reports. Anything that needs judgment, such as matching "leave it to the pricing team" to a name, drafting person definitions or choosing what to govern, is left to the agent and the user, guided by the skill (§10).
 
 ## 4. Annotations
 
@@ -68,7 +69,7 @@ Only `"<question>"` is required. Everything else is optional, and the question i
 
 An `@open` passes the coverage check (§5) and is listed in every report until it is replaced by a `@source`.
 
-**Sticky arguments.** When `sticky` is `true` in the config (§5), the `@source` that replaces an `@open` must keep the opening's `by` and `in`, combined as `by <who> in <where>`. The `options` and `<id>` are dropped, because the question has been answered. `live-comments fill` (§9) makes the replacement. `check` compares against the base branch and reports an `@open` replaced by a `@source` that dropped its sticky arguments (LC015). When `sticky` is `false`, the replacing `@source` may carry any arguments or none.
+**Sticky arguments.** When `sticky` is `true` in the config (§5), the `@source` that replaces an `@open` must keep the opening's `by` and `in`, combined as `by <who> in <where>`. The `options` and `<id>` are dropped, because the question has been answered. Whoever answers the question, usually an agent following the skill, edits the comment. `check` compares against the base branch and reports an `@open` replaced by a `@source` that dropped its sticky arguments (LC015). When `sticky` is `false`, the replacing `@source` may carry any arguments or none.
 
 *Future:* distinguish a **parked** question (no one may choose yet) from a **permission** (the source explicitly allows either reading, so the implementer may choose).
 
@@ -205,8 +206,7 @@ Names are case-sensitive and must be defined once (LC017). Definitions may refer
 - **The authority file is governed.** It confers authority, so changes to it should require review by its code owners under branch protection. Otherwise anyone could gain authority by adding their own account to a group. Code can name authorities but never define them.
 - **Agents never hold authority.** Accounts defined with `agent` never satisfy any expression, including through `members(…)` and place-only authorities. Words an agent wrote under a person's credentials are excluded whenever the provider can tell them apart.
 - **Unknown names and accounts.** A `by` that uses an undefined name is an error (LC011). Quoted words written by an account that no person definition includes satisfy no expression except a place-only one, and are reported (LC010).
-- **Matching is assisted, not automatic.** `live-comments authority suggest` proposes person definitions, for example from verified emails that several systems share. It writes proposals for review and never edits the file directly.
-- **Agents propose; people approve.** When a user says who should decide in plain words, an agent looks for a matching name with `who --search`. If none exists, it proposes a definition to the user and adds it only with the user's agreement. The change then goes through the file's normal review.
+- **Agents propose; people approve.** Matching a plain-language request ("leave this to the pricing team") to a name, and drafting person or place definitions, are judgments, so the CLI does not attempt them. An agent reads the authority file and `directory` output, proposes a match or a new definition to the user, and adds a definition only with the user's agreement. The change then goes through the file's normal review.
 - **Directories can supply people.** A project with an identity provider that supports SCIM can generate the person definitions from it.
 
 ### 7.4 Authority changes in review
@@ -247,18 +247,17 @@ The lockfile stores the snapshot text so that `check` can verify quotes offline.
 
 | Command | Network | Purpose |
 |---|---|---|
-| `live-comments init` | yes | Set up a project: config, starter authority file, skill and agent MCP configuration (§10). |
+| `live-comments init` | none | Scaffold a project: empty config and authority file, the skill, and agent MCP configuration (§10). |
 | `live-comments check [--base <branch>]` | none | Verify annotations against the lockfile and the authority file. With `--base`, also report authority changes (§7.4). Deterministic; intended for every save and for CI. |
 | `live-comments sync` | yes | Re-fetch every referenced source and `members(…)` expression, update the lockfile, and report what changed. |
 | `live-comments read <ref>` | yes | Resolve and normalize one source, record it in the lockfile, and print the text to quote from (§6.2). |
-| `live-comments mcp` | yes | Run an MCP server whose `read_source` tool does the same as `read`, so coding agents read sources through the checker's path. |
-| `live-comments context <file:line>` | none | Print, as JSON, everything an agent needs before annotating: whether the line is governed, nearby annotations, the authorities they use, and `sticky`. |
+| `live-comments mcp` | yes | Run an MCP server exposing `read`, `context`, `who`, `authority` and `directory` as tools, so coding agents use the checker's read path and facts. |
+| `live-comments context <file:line>` | none | Print, as JSON, the facts an agent needs before annotating: whether the line is governed, the annotations nearby, the authorities they use, and `sticky`. |
 | `live-comments who <expr>` | none | Expand an authority expression into the people and places that satisfy it. |
-| `live-comments who --search "<words>"` | none | List names whose definitions, members or places match the words, so a request like "leave this to the pricing team" can be matched to a name (§7.3). |
+| `live-comments authority` | none | Print every name in the authority file, fully expanded, as JSON. |
+| `live-comments directory <system>` | yes | List a connected system's accounts (id, display name, email) and places (id, name) as JSON, so person and place definitions can be written with exact ids. |
 | `live-comments connect <system>` | yes | Connect a tool through Nango, which asks the user to sign in, and add its resolver to the config. |
-| `live-comments fill <id or file:line> <ref> ["<quote>"]` | yes | Replace an `@open` with a `@source`, carrying sticky arguments (§4.2). |
 | `live-comments report` | none | List open questions with who should answer them, plus coverage per governed area. |
-| `live-comments authority suggest` | yes | Propose person definitions for review (§7.3). |
 
 ### 9.1 Diagnostics
 
@@ -291,8 +290,10 @@ Live Comments ships an agent skill that tells coding agents when to annotate, ho
   1. detects which agents the project uses (`.claude/`, `.cursor/`, `.github/`, `AGENTS.md`);
   2. installs the skill into `.agents/skills/live-comments/` and each detected agent's skills folder, or appends the snippet to `AGENTS.md`;
   3. registers `live-comments mcp` in each detected agent's MCP configuration;
-  4. writes `live-comments.config.json` with suggested governed areas, and a starter `AUTHORITY` file with person definitions suggested from git authors, marked for review;
-  5. walks through connecting Nango, and prints a CI step that runs `live-comments check --base`.
+  4. writes an empty `live-comments.config.json` and `AUTHORITY`;
+  5. prints a CI step that runs `live-comments check --base`.
+
+  Filling in the config and authority file is judgment, so `init` leaves it to the agent: the skill walks the agent through choosing governed areas with the user, connecting tools with `connect`, and drafting person, group and place definitions from `directory` output and git history.
 - **Agents can do the setup.** Telling an agent "set up live-comments from github.com/BicameralAI/live-comments" is enough: the README directs it to run `init`. Because `init` commits the skill and configuration into the project, every later session and every teammate's agent picks them up.
 
 ## 11. Packaging

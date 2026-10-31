@@ -7,6 +7,16 @@ description: Annotate business rules with @source and @open live comments. Use w
 
 This project marks where its business rules come from. A `@source` cites the ticket, document or file a rule rests on. An `@open` marks a rule that nobody has decided yet. A checker verifies both. Your job is to annotate the rules you write the way the rest of the codebase does.
 
+## Setting up a project
+
+If the project has no `live-comments.config.json`, or the user asks you to set up live-comments:
+
+1. Run `npx live-comments init`. It creates an empty config and `AUTHORITY` file, installs this skill and registers the MCP server. It makes no choices for the project.
+2. **Governed areas.** Look through the codebase for where business rules live (pricing, billing, eligibility, permissions, policy) and propose `governed` globs to the user. Start narrow; it is easy to add areas later.
+3. **Sources.** Ask the user which tools their decisions live in, and have them run `npx live-comments connect <system>` for each one.
+4. **Authority.** Draft person definitions from `npx live-comments directory <system>` and `git log` authors, then groups and places from the teams the user describes. Don't merge two accounts into one person unless an email matches or the user confirms it. Show the full draft to the user before writing it.
+5. Add the CI step `init` printed, and run `npx live-comments check`.
+
 ## Before you write a business rule
 
 Run:
@@ -58,17 +68,11 @@ Sometimes a source lives in a tool the project can't read yet: `read` reports an
 
 `by` names who should decide, using names from the `AUTHORITY` file. Check what a name covers with `npx live-comments who <name>`.
 
-**When the user says who decides** ("leave this to the pricing team", "legal owns refund rules"), find the matching name:
-
-```
-npx live-comments who --search "pricing team"
-```
-
-It lists names whose definitions, members or places match the words.
+**When the user says who decides** ("leave this to the pricing team", "legal owns refund rules"), find the matching name yourself. Run `npx live-comments authority` to see every name fully expanded, and match the user's words against names, members and places. "The pricing team" might be a group (`pricing`) or an authority that also fixes where they decide (`pricing-call`); prefer the one nearby code already uses.
 
 - **One clear match:** use it, and mention it in your summary.
 - **Several matches:** ask the user which one, showing what each covers.
-- **No match:** propose a definition, for example `pricing-team = members(linear:team/PRICING)`. Show it to the user and add it to `AUTHORITY` only if they agree. Tell them the change needs review from the owners of `AUTHORITY`.
+- **No match:** propose a definition, for example `pricing-team = members(linear:team/PRICING)`. Get exact ids from `npx live-comments directory <system>` rather than guessing them. Show the definition to the user and add it to `AUTHORITY` only if they agree. Tell them the change needs review from the owners of `AUTHORITY`.
 
 **When the user doesn't say,** reuse the authority that neighbouring code uses for the same kind of rule.
 
@@ -80,13 +84,15 @@ Rules that always apply:
 
 ## Answering an `@open`
 
-When a source now decides an open question, run:
+When a source now decides an open question, replace the `@open` with a `@source` for it. If `context` reports `sticky: true`, keep the opening's `by` and `in`, combined as `by <who> in <where>`, and drop its `options` and id:
 
-```
-npx live-comments fill <id or file:line> <ref> "<quote>"
+```ts
+/** @open "Do discount codes stack?" by pricing in linear:team/PRICING options "yes" | "no" */
+// becomes
+/** @source linear:ENG-142 "Codes do not stack" by pricing in linear:team/PRICING */
 ```
 
-It replaces the `@open` with a `@source` and keeps the opening's `by` and `in` when the project uses sticky arguments. If you edit by hand instead, keep them yourself.
+`check` reports a replacement that dropped sticky arguments.
 
 ## Before you finish
 
