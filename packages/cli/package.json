@@ -1,0 +1,19 @@
+{
+  "name": "live-comments",
+  "version": "0.0.1",
+  "description": "Code comments that cite where a rule came from, and a checker that keeps them honest.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "live-comments": "dist/main.js" },
+  "files": ["dist", "skills"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && rm -rf skills && cp -R ../../skills skills && chmod +x dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@live-comments/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "effect": "3.22.4",
+    "zod": "3.25.76"
+  }
+}

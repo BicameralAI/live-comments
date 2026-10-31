@@ -1,0 +1,29 @@
+{
+  "name": "@live-comments/core",
+  "version": "0.0.1",
+  "description": "Core logic for live comments: annotations, sources, authority and lifecycle.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "3.22.4",
+    "typescript": "5.9.3"
+  },
+  "optionalDependencies": {
+    "@composio/core": "0.27.0"
+  }
+}

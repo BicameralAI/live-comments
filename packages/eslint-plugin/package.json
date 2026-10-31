@@ -1,0 +1,21 @@
+{
+  "name": "eslint-plugin-live-comments",
+  "version": "0.0.1",
+  "description": "ESLint rule that reports live-comments problems in the editor.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@live-comments/core": "workspace:*",
+    "effect": "3.22.4"
+  },
+  "peerDependencies": {
+    "eslint": ">=9"
+  }
+}
