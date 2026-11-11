@@ -21,6 +21,13 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] })
 const json = (v: unknown) => text(JSON.stringify(v, null, 2))
 const fail = (t: string) => ({ content: [{ type: "text" as const, text: t }], isError: true })
 
+// Tool hints, so hosts know which calls they can make without asking. Only read_source
+// writes, and only its ref's entry in the committed lockfile (spec §8), so it is not
+// destructive. read_source and directory reach the network; the rest read the workspace.
+const LOCAL_READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const
+const REMOTE_READ = { ...LOCAL_READ, openWorldHint: true } as const
+const LOCK_WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } as const
+
 export const serveMcp = async (root: string) => {
   const server = new McpServer({ name: "live-comments", version: "0.0.1" })
 
@@ -32,7 +39,8 @@ export const serveMcp = async (root: string) => {
     {
       description:
         "Read a source (ticket, document, file) through live-comments and record it in the lockfile. Copy quotes for @source tags exactly from this output.",
-      inputSchema: { ref: z.string().describe("A ref such as github:owner/repo#12 or linear:ENG-142") }
+      inputSchema: { ref: z.string().describe("A ref such as github:owner/repo#12 or linear:ENG-142") },
+      annotations: LOCK_WRITE
     },
     async ({ ref }) => {
       const ws = await load()
@@ -47,14 +55,19 @@ export const serveMcp = async (root: string) => {
     "context",
     {
       description: "Facts to read before annotating a line: whether it is governed, nearby annotations and the authorities they use, and sticky.",
-      inputSchema: { file: z.string(), line: z.number().int() }
+      inputSchema: { file: z.string(), line: z.number().int() },
+      annotations: LOCAL_READ
     },
     async ({ file, line }) => json(context(await load(), file, line))
   )
 
   server.registerTool(
     "who",
-    { description: "Expand an authority expression into the people and places that satisfy it.", inputSchema: { expression: z.string() } },
+    {
+      description: "Expand an authority expression into the people and places that satisfy it.",
+      inputSchema: { expression: z.string() },
+      annotations: LOCAL_READ
+    },
     async ({ expression }) => {
       const r = who(await load(), expression)
       return Either.isRight(r) ? json(r.right) : fail(r.left)
@@ -63,7 +76,7 @@ export const serveMcp = async (root: string) => {
 
   server.registerTool(
     "authority",
-    { description: "Every name in the AUTHORITY file, fully expanded.", inputSchema: {} },
+    { description: "Every name in the AUTHORITY file, fully expanded.", inputSchema: {}, annotations: LOCAL_READ },
     withWs(async (ws) => json(authorityListing(ws)))
   )
 
@@ -71,7 +84,8 @@ export const serveMcp = async (root: string) => {
     "directory",
     {
       description: "List a connected system's accounts and places with exact ids, for writing AUTHORITY definitions.",
-      inputSchema: { system: z.string(), scope: z.string().optional().describe("For GitHub, the organization") }
+      inputSchema: { system: z.string(), scope: z.string().optional().describe("For GitHub, the organization") },
+      annotations: REMOTE_READ
     },
     async ({ system, scope }) => {
       const ws = await load()
